@@ -1,0 +1,22 @@
+# Build output
+*.exe
+*.exe~
+dist/
+
+# Test cache & coverage
+*.test
+*.out
+coverage.html
+
+# Environment
+.env
+.env.*
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
