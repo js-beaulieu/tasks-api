@@ -6,43 +6,18 @@ tasks:
     cmds:
       - go build ./...
 
-  test:
-    desc: Run all tests (unit + integration)
-    cmds:
-      - go tool gotestsum --junitfile report.xml -- -tags integration ./...
+  check:
+    desc: fmt + lint + build + test (pre-commit sanity check)
+    deps:
+      - fmt
+      - lint
+      - build
+      - test:coverage
 
-  test:unit:
-    desc: Run unit tests only (no DB)
+  dev:
+    desc: Start the server in development (hot-reload via air)
     cmds:
-      - go tool gotestsum --junitfile report.xml -- ./...
-
-  test:integration:
-    desc: Run integration tests only (requires SQLite)
-    cmds:
-      - go tool gotestsum --junitfile report.xml -- -tags integration ./...
-
-  test:unit:coverage:
-    desc: Run unit tests with JUnit XML report and coverage profile
-    cmds:
-      - go tool gotestsum --junitfile report.xml -- -coverprofile=coverage.out ./...
-
-  test:unit:watch:
-    desc: Run unit tests once then watch for changes
-    cmds:
-      - go tool gotestsum -- ./...
-      - go tool gotestsum --watch -- ./...
-
-  test:integration:watch:
-    desc: Run integration tests once then watch for changes
-    cmds:
-      - go tool gotestsum -- -tags integration ./...
-      - go tool gotestsum --watch -- -tags integration ./...
-
-  test:watch:
-    desc: Run all tests once then watch for changes
-    cmds:
-      - go tool gotestsum -- -tags integration ./...
-      - go tool gotestsum --watch -- -tags integration ./...
+      - go tool air
 
   fmt:
     desc: Format all Go source files
@@ -54,15 +29,76 @@ tasks:
     cmds:
       - go tool golangci-lint run
 
-  dev:
-    desc: Start the server in development (hot-reload via air)
+  test:
+    desc: Run all tests (unit + integration)
     cmds:
-      - go tool air
+      - go tool gotestsum --junitfile report.xml -- -tags integration ./...
 
-  check:
-    desc: fmt + lint + build + test (pre-commit sanity check)
+  test:coverage:
+    desc: Run full test suite (unit + integration) with coverage profile
     cmds:
-      - task: fmt
-      - task: lint
-      - task: build
-      - task: test:unit
+      - task: test:coverage:integration
+
+  test:coverage:check:
+    desc: Check coverage.out against a threshold (default 75). Override with THRESHOLD=N.
+    vars:
+      THRESHOLD: '{{default "75" .THRESHOLD}}'
+    cmds:
+      - go run ./scripts/mincov {{.THRESHOLD}}
+
+  test:coverage:integration:
+    desc: Run integration tests (SQLite) with JUnit XML report and coverage profile
+    vars:
+      EXCLUDE:
+        - internal/testing
+        - internal/model
+        - beaulieu/tasks$
+        - scripts
+      PKGS:
+        sh: go run ./scripts/pkgs {{join " " .EXCLUDE}}
+    cmds:
+      - go tool gotestsum --junitfile report.xml -- -tags integration -cover -coverprofile=coverage.out {{.PKGS}}
+      - go run ./scripts/mincov 75
+
+  test:coverage:unit:
+    desc: Run unit tests with JUnit XML report and coverage profile
+    vars:
+      EXCLUDE:
+        - internal/testing
+        - internal/model
+        - internal/store/sqlite
+        - beaulieu/tasks$
+        - scripts
+      PKGS:
+        sh: go run ./scripts/pkgs {{join " " .EXCLUDE}}
+    cmds:
+      - go tool gotestsum --junitfile report.xml -- -cover -coverprofile=coverage.out {{.PKGS}}
+      - go run ./scripts/mincov 75
+
+  test:integration:
+    desc: Run integration tests only (requires SQLite)
+    cmds:
+      - go tool gotestsum --junitfile report.xml -- -tags integration ./...
+
+  test:unit:
+    desc: Run unit tests only (no DB)
+    cmds:
+      - go tool gotestsum --junitfile report.xml -- ./...
+
+  test:watch:
+    desc: Run all tests once then watch for changes
+    cmds:
+      - go tool gotestsum -- -tags integration ./...
+      - go tool gotestsum --watch -- -tags integration ./...
+
+  test:watch:integration:
+    desc: Run integration tests once then watch for changes
+    cmds:
+      - go tool gotestsum -- -tags integration ./...
+      - go tool gotestsum --watch -- -tags integration ./...
+
+  test:watch:unit:
+    desc: Run unit tests once then watch for changes
+    cmds:
+      - go tool gotestsum -- ./...
+      - go tool gotestsum --watch -- ./...
