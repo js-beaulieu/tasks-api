@@ -31,6 +31,7 @@ func New(store *sqlite.Store) *mcp.Server {
 		mcp.AddTool(s, tools.CreateTaskTool, tools.CreateTaskHandler(store.Tasks))
 		mcp.AddTool(s, tools.UpdateTaskTool, tools.UpdateTaskHandler(store.Tasks))
 		mcp.AddTool(s, tools.DeleteTaskTool, tools.DeleteTaskHandler(store.Projects, store.Tasks))
+		mcp.AddTool(s, tools.CompleteTaskTool, tools.CompleteTaskHandler(store.Projects, store.Tasks))
 		mcp.AddTool(s, tools.ListTagsTool, tools.ListTagsHandler(store.Tags))
 	}
 

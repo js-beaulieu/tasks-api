@@ -178,6 +178,40 @@ func UpdateTaskHandler(tasks repo.TaskRepo) mcp.ToolHandlerFor[updateTaskInput, 
 	}
 }
 
+// ── complete_task ─────────────────────────────────────────────────────────────
+
+var CompleteTaskTool = &mcp.Tool{
+	Name:        "complete_task",
+	Description: "Mark a task as done. If the task is recurring, creates and returns the next occurrence automatically.",
+}
+
+type completeTaskInput struct {
+	UserID     string `json:"user_id"`
+	TaskID     string `json:"task_id"`
+	DoneStatus string `json:"done_status"`
+}
+
+func CompleteTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo) mcp.ToolHandlerFor[completeTaskInput, any] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in completeTaskInput) (*mcp.CallToolResult, any, error) {
+		if in.UserID == "" || in.TaskID == "" || in.DoneStatus == "" {
+			return nil, nil, errors.New("user_id, task_id, and done_status are required")
+		}
+		task, err := tasks.Get(ctx, in.TaskID)
+		if err != nil {
+			return nil, nil, err
+		}
+		role, err := projectsRepo.GetMemberRole(ctx, task.ProjectID, in.UserID)
+		if err != nil || !projects.RequireRole(model.RoleModify, role) {
+			return nil, nil, errors.New("no access")
+		}
+		completed, next, err := tasks.CompleteTask(ctx, in.TaskID, in.DoneStatus)
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, map[string]any{"completed": completed, "next": next}, nil
+	}
+}
+
 // ── delete_task ───────────────────────────────────────────────────────────────
 
 var DeleteTaskTool = &mcp.Tool{

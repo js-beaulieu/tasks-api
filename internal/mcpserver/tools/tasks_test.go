@@ -14,6 +14,59 @@ import (
 
 func strPtr(s string) *string { return &s }
 
+func TestCompleteTaskHandler(t *testing.T) {
+	t.Run("missing task_id returns error", func(t *testing.T) {
+		handler := CompleteTaskHandler(&mock.ProjectRepo{}, &mock.TaskRepo{})
+		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, completeTaskInput{
+			UserID:     "u1",
+			DoneStatus: "done",
+			// TaskID intentionally empty
+		})
+		if err == nil {
+			t.Fatal("expected error for missing task_id")
+		}
+	})
+
+	t.Run("recurring complete returns both completed and next", func(t *testing.T) {
+		nextDue := "2026-04-15"
+		completed := &model.Task{ID: "t1", ProjectID: "p1", Name: "T", Status: "done", OwnerID: "u1"}
+		next := &model.Task{ID: "t2", ProjectID: "p1", Name: "T", Status: "todo", DueDate: &nextDue, OwnerID: "u1"}
+
+		tr := &mock.TaskRepo{
+			GetFn: func(_ context.Context, id string) (*model.Task, error) {
+				return &model.Task{ID: id, ProjectID: "p1", Name: "T", Status: "todo", OwnerID: "u1"}, nil
+			},
+			CompleteTaskFn: func(_ context.Context, _, _ string) (*model.Task, *model.Task, error) {
+				return completed, next, nil
+			},
+		}
+		pr := &mock.ProjectRepo{
+			GetMemberRoleFn: func(_ context.Context, _, _ string) (string, error) {
+				return model.RoleModify, nil
+			},
+		}
+		handler := CompleteTaskHandler(pr, tr)
+		_, output, err := handler(context.Background(), &mcp.CallToolRequest{}, completeTaskInput{
+			UserID:     "u1",
+			TaskID:     "t1",
+			DoneStatus: "done",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		result, ok := output.(map[string]any)
+		if !ok {
+			t.Fatalf("output is not map[string]any: %T", output)
+		}
+		if result["completed"] == nil {
+			t.Error("completed is nil in output")
+		}
+		if result["next"] == nil {
+			t.Error("next is nil in output, want next occurrence")
+		}
+	})
+}
+
 func TestListTasksHandlerWithParentID(t *testing.T) {
 	t.Run("only parent_id fetches parent task and lists children", func(t *testing.T) {
 		tr := &mock.TaskRepo{
