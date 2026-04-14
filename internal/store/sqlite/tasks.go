@@ -53,7 +53,7 @@ func (s *taskStore) ListChildren(ctx context.Context, projectID string, parentID
 	if err != nil {
 		return nil, fmt.Errorf("list children: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close() //nolint:errcheck // rows.Err() below captures any iteration error
 
 	var tasks []*model.Task
 	for rows.Next() {
@@ -75,7 +75,7 @@ func (s *taskStore) Get(ctx context.Context, id string) (*model.Task, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get task: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close() //nolint:errcheck // rows.Err() below captures any iteration error
 
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
@@ -321,7 +321,7 @@ func checkCycle(ctx context.Context, tx *sql.Tx, taskID string, newParentID *str
 	if err != nil {
 		return fmt.Errorf("cycle check: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close() //nolint:errcheck // rows.Err() below captures any iteration error
 
 	if rows.Next() {
 		return repo.ErrConflict

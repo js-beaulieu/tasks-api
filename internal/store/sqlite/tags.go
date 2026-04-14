@@ -15,7 +15,7 @@ func (s *tagStore) ListForTask(ctx context.Context, taskID string) ([]string, er
 	if err != nil {
 		return nil, fmt.Errorf("list tags for task: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close() //nolint:errcheck // rows.Err() below captures any iteration error
 
 	var tags []string
 	for rows.Next() {
@@ -64,7 +64,7 @@ func (s *tagStore) ListDistinctForUser(ctx context.Context, userID string) ([]st
 	if err != nil {
 		return nil, fmt.Errorf("list distinct tags for user: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close() //nolint:errcheck // rows.Err() below captures any iteration error
 
 	var tags []string
 	for rows.Next() {

@@ -23,7 +23,7 @@ func Open(t *testing.T) (*sql.DB, *sqlite.Store) {
 		t.Fatalf("db.Open: %v", err)
 	}
 
-	t.Cleanup(func() { _ = rawDB.Close() })
+	t.Cleanup(func() { rawDB.Close() }) //nolint:errcheck // test cleanup, error not actionable
 
 	return rawDB, sqlite.New(rawDB)
 }
