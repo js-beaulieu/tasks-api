@@ -18,8 +18,12 @@ type listTagsInput struct {
 	UserID string `json:"user_id"`
 }
 
-func ListTagsHandler(tags repo.TagRepo) mcp.ToolHandlerFor[listTagsInput, any] {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, in listTagsInput) (*mcp.CallToolResult, any, error) {
+type listTagsResult struct {
+	Tags []string `json:"tags"`
+}
+
+func ListTagsHandler(tags repo.TagRepo) mcp.ToolHandlerFor[listTagsInput, *listTagsResult] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in listTagsInput) (*mcp.CallToolResult, *listTagsResult, error) {
 		if in.UserID == "" {
 			return nil, nil, errors.New("user_id is required")
 		}
@@ -27,6 +31,6 @@ func ListTagsHandler(tags repo.TagRepo) mcp.ToolHandlerFor[listTagsInput, any] {
 		if err != nil {
 			return nil, nil, err
 		}
-		return nil, list, nil
+		return nil, &listTagsResult{Tags: list}, nil
 	}
 }

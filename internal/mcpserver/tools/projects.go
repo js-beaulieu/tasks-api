@@ -22,8 +22,12 @@ type listProjectsInput struct {
 	UserID string `json:"user_id"`
 }
 
-func ListProjectsHandler(projects repo.ProjectRepo) mcp.ToolHandlerFor[listProjectsInput, any] {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, in listProjectsInput) (*mcp.CallToolResult, any, error) {
+type listProjectsResult struct {
+	Projects []*model.Project `json:"projects"`
+}
+
+func ListProjectsHandler(projects repo.ProjectRepo) mcp.ToolHandlerFor[listProjectsInput, *listProjectsResult] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in listProjectsInput) (*mcp.CallToolResult, *listProjectsResult, error) {
 		if in.UserID == "" {
 			return nil, nil, errors.New("user_id is required")
 		}
@@ -31,7 +35,7 @@ func ListProjectsHandler(projects repo.ProjectRepo) mcp.ToolHandlerFor[listProje
 		if err != nil {
 			return nil, nil, err
 		}
-		return nil, list, nil
+		return nil, &listProjectsResult{Projects: list}, nil
 	}
 }
 
@@ -46,8 +50,8 @@ type getProjectInput struct {
 	ProjectID string `json:"project_id"`
 }
 
-func GetProjectHandler(projects repo.ProjectRepo) mcp.ToolHandlerFor[getProjectInput, any] {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, in getProjectInput) (*mcp.CallToolResult, any, error) {
+func GetProjectHandler(projects repo.ProjectRepo) mcp.ToolHandlerFor[getProjectInput, *model.Project] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in getProjectInput) (*mcp.CallToolResult, *model.Project, error) {
 		if in.ProjectID == "" {
 			return nil, nil, errors.New("project_id is required")
 		}
@@ -75,8 +79,8 @@ type createProjectInput struct {
 	Statuses    []string `json:"statuses,omitempty"`
 }
 
-func CreateProjectHandler(projects repo.ProjectRepo) mcp.ToolHandlerFor[createProjectInput, any] {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, in createProjectInput) (*mcp.CallToolResult, any, error) {
+func CreateProjectHandler(projects repo.ProjectRepo) mcp.ToolHandlerFor[createProjectInput, *model.Project] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in createProjectInput) (*mcp.CallToolResult, *model.Project, error) {
 		if in.UserID == "" || in.Name == "" {
 			return nil, nil, errors.New("user_id and name are required")
 		}
@@ -113,8 +117,8 @@ type updateProjectInput struct {
 	RemoveStatuses []string `json:"remove_statuses,omitempty"`
 }
 
-func UpdateProjectHandler(projects repo.ProjectRepo) mcp.ToolHandlerFor[updateProjectInput, any] {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, in updateProjectInput) (*mcp.CallToolResult, any, error) {
+func UpdateProjectHandler(projects repo.ProjectRepo) mcp.ToolHandlerFor[updateProjectInput, *model.Project] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in updateProjectInput) (*mcp.CallToolResult, *model.Project, error) {
 		if in.UserID == "" || in.ProjectID == "" {
 			return nil, nil, errors.New("user_id and project_id are required")
 		}

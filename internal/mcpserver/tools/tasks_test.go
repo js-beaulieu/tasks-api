@@ -54,14 +54,13 @@ func TestCompleteTaskHandler(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		result, ok := output.(map[string]any)
-		if !ok {
-			t.Fatalf("output is not map[string]any: %T", output)
+		if output == nil {
+			t.Fatal("expected non-nil output")
 		}
-		if result["completed"] == nil {
+		if output.Completed == nil {
 			t.Error("completed is nil in output")
 		}
-		if result["next"] == nil {
+		if output.Next == nil {
 			t.Error("next is nil in output, want next occurrence")
 		}
 	})

@@ -26,8 +26,12 @@ type listTasksInput struct {
 	Tag       *string `json:"tag,omitempty"`
 }
 
-func ListTasksHandler(tasks repo.TaskRepo) mcp.ToolHandlerFor[listTasksInput, any] {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, in listTasksInput) (*mcp.CallToolResult, any, error) {
+type listTasksResult struct {
+	Tasks []*model.Task `json:"tasks"`
+}
+
+func ListTasksHandler(tasks repo.TaskRepo) mcp.ToolHandlerFor[listTasksInput, *listTasksResult] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in listTasksInput) (*mcp.CallToolResult, *listTasksResult, error) {
 		if in.ProjectID != nil && in.ParentID != nil {
 			return nil, nil, errors.New("provide exactly one of project_id or parent_id, not both")
 		}
@@ -54,7 +58,7 @@ func ListTasksHandler(tasks repo.TaskRepo) mcp.ToolHandlerFor[listTasksInput, an
 		if err != nil {
 			return nil, nil, err
 		}
-		return nil, list, nil
+		return nil, &listTasksResult{Tasks: list}, nil
 	}
 }
 
@@ -69,8 +73,8 @@ type getTaskInput struct {
 	TaskID string `json:"task_id"`
 }
 
-func GetTaskHandler(tasks repo.TaskRepo) mcp.ToolHandlerFor[getTaskInput, any] {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, in getTaskInput) (*mcp.CallToolResult, any, error) {
+func GetTaskHandler(tasks repo.TaskRepo) mcp.ToolHandlerFor[getTaskInput, *model.Task] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in getTaskInput) (*mcp.CallToolResult, *model.Task, error) {
 		if in.TaskID == "" {
 			return nil, nil, errors.New("task_id is required")
 		}
@@ -100,8 +104,8 @@ type createTaskInput struct {
 	AssigneeID  *string `json:"assignee_id,omitempty"`
 }
 
-func CreateTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo) mcp.ToolHandlerFor[createTaskInput, any] {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, in createTaskInput) (*mcp.CallToolResult, any, error) {
+func CreateTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo) mcp.ToolHandlerFor[createTaskInput, *model.Task] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in createTaskInput) (*mcp.CallToolResult, *model.Task, error) {
 		if in.UserID == "" || in.ProjectID == "" || in.Name == "" {
 			return nil, nil, errors.New("user_id, project_id, and name are required")
 		}
@@ -150,8 +154,8 @@ type updateTaskInput struct {
 	Position    *int    `json:"position,omitempty"`
 }
 
-func UpdateTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo) mcp.ToolHandlerFor[updateTaskInput, any] {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, in updateTaskInput) (*mcp.CallToolResult, any, error) {
+func UpdateTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo) mcp.ToolHandlerFor[updateTaskInput, *model.Task] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in updateTaskInput) (*mcp.CallToolResult, *model.Task, error) {
 		if in.UserID == "" || in.TaskID == "" {
 			return nil, nil, errors.New("user_id and task_id are required")
 		}
@@ -210,8 +214,13 @@ type completeTaskInput struct {
 	DoneStatus string `json:"done_status"`
 }
 
-func CompleteTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo) mcp.ToolHandlerFor[completeTaskInput, any] {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, in completeTaskInput) (*mcp.CallToolResult, any, error) {
+type completeTaskResult struct {
+	Completed *model.Task `json:"completed"`
+	Next      *model.Task `json:"next"`
+}
+
+func CompleteTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo) mcp.ToolHandlerFor[completeTaskInput, *completeTaskResult] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in completeTaskInput) (*mcp.CallToolResult, *completeTaskResult, error) {
 		if in.UserID == "" || in.TaskID == "" || in.DoneStatus == "" {
 			return nil, nil, errors.New("user_id, task_id, and done_status are required")
 		}
@@ -227,7 +236,7 @@ func CompleteTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo) mcp
 		if err != nil {
 			return nil, nil, err
 		}
-		return nil, map[string]any{"completed": completed, "next": next}, nil
+		return nil, &completeTaskResult{Completed: completed, Next: next}, nil
 	}
 }
 
