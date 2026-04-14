@@ -6,6 +6,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/js-beaulieu/tasks/internal/httpserver/middleware"
+	"github.com/js-beaulieu/tasks/internal/httpserver/projects"
 	"github.com/js-beaulieu/tasks/internal/httpserver/render"
 	"github.com/js-beaulieu/tasks/internal/httpserver/users"
 	"github.com/js-beaulieu/tasks/internal/store/sqlite"
@@ -16,6 +17,7 @@ func New(store *sqlite.Store) http.Handler {
 	r.Use(middleware.AuthMiddleware(store.Users))
 	r.Get("/health", healthHandler)
 	r.Mount("/users", users.NewRouter(store.Users))
+	r.Mount("/projects", projects.NewRouter(store.Projects))
 	return r
 }
 
