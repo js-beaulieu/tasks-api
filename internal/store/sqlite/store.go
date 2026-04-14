@@ -19,5 +19,7 @@ func New(db *sql.DB) *Store {
 	return &Store{
 		Users:    &userStore{db: db},
 		Projects: &projectStore{db: db},
+		Tasks:    &taskStore{db: db},
+		Tags:     &tagStore{db: db},
 	}
 }
