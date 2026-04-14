@@ -202,6 +202,7 @@ require (
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/subosito/gotenv v1.4.1 // indirect
 	github.com/tdewolff/parse/v2 v2.8.3 // indirect
+	github.com/teambition/rrule-go v1.8.2 // indirect
 	github.com/tetafro/godot v1.5.4 // indirect
 	github.com/timakin/bodyclose v0.0.0-20241222091800-1db5c5ca4d67 // indirect
 	github.com/timonwong/loggercheck v0.11.0 // indirect

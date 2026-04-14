@@ -46,7 +46,7 @@ func (s *taskStore) ListChildren(ctx context.Context, projectID string, parentID
 	}
 
 	query := "SELECT t.id, t.project_id, t.parent_id, t.name, t.description, " +
-		"t.status, t.due_date, t.owner_id, t.assignee_id, t.position, t.created_at, t.updated_at " +
+		"t.status, t.due_date, t.owner_id, t.assignee_id, t.position, t.recurrence, t.created_at, t.updated_at " +
 		"FROM tasks t " + joins + where + "ORDER BY t.position"
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
@@ -70,7 +70,7 @@ func (s *taskStore) ListChildren(ctx context.Context, projectID string, parentID
 func (s *taskStore) Get(ctx context.Context, id string) (*model.Task, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, project_id, parent_id, name, description,
-		        status, due_date, owner_id, assignee_id, position, created_at, updated_at
+		        status, due_date, owner_id, assignee_id, position, recurrence, created_at, updated_at
 		 FROM tasks WHERE id = ?`, id)
 	if err != nil {
 		return nil, fmt.Errorf("get task: %w", err)
@@ -119,10 +119,10 @@ func (s *taskStore) Create(ctx context.Context, t *model.Task) error {
 	_, err = tx.ExecContext(ctx,
 		`INSERT INTO tasks
 		   (id, project_id, parent_id, name, description, status, due_date,
-		    owner_id, assignee_id, position)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		    owner_id, assignee_id, position, recurrence)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.ID, t.ProjectID, t.ParentID, t.Name, t.Description, t.Status, t.DueDate,
-		t.OwnerID, t.AssigneeID, t.Position,
+		t.OwnerID, t.AssigneeID, t.Position, t.Recurrence,
 	)
 	if err != nil {
 		return fmt.Errorf("insert task: %w", err)
@@ -264,6 +264,10 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 		setClauses = append(setClauses, "assignee_id = ?")
 		args = append(args, *t.AssigneeID)
 	}
+	if t.Recurrence != nil {
+		setClauses = append(setClauses, "recurrence = ?")
+		args = append(args, *t.Recurrence)
+	}
 
 	args = append(args, t.ID)
 	query := "UPDATE tasks SET " + strings.Join(setClauses, ", ") + " WHERE id = ?"
@@ -272,6 +276,141 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 	}
 
 	return tx.Commit()
+}
+
+// CompleteTask marks the task as done and, if it is recurring with a due_date,
+// creates and returns the next occurrence. All changes happen in one transaction.
+func (s *taskStore) CompleteTask(ctx context.Context, id, doneStatus string) (*model.Task, *model.Task, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	// Load the task to get recurrence, due_date, project_id, etc.
+	rows, err := tx.QueryContext(ctx,
+		`SELECT id, project_id, parent_id, name, description,
+		        status, due_date, owner_id, assignee_id, position, recurrence, created_at, updated_at
+		 FROM tasks WHERE id = ?`, id)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load task: %w", err)
+	}
+	if !rows.Next() {
+		rows.Close()
+		return nil, nil, repo.ErrNotFound
+	}
+	task, err := scanTask(rows)
+	rows.Close()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Validate done_status against project_statuses.
+	if err := validateStatus(ctx, tx, task.ProjectID, doneStatus); err != nil {
+		return nil, nil, err
+	}
+
+	// Recurring task requires a due_date to compute next occurrence.
+	if task.Recurrence != nil && task.DueDate == nil {
+		return nil, nil, repo.ErrConflict
+	}
+
+	// Mark the task done.
+	if _, err = tx.ExecContext(ctx,
+		`UPDATE tasks SET status = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`,
+		doneStatus, id,
+	); err != nil {
+		return nil, nil, fmt.Errorf("update task status: %w", err)
+	}
+	task.Status = doneStatus
+
+	// Non-recurring: commit and return.
+	if task.Recurrence == nil {
+		if err := tx.Commit(); err != nil {
+			return nil, nil, fmt.Errorf("commit: %w", err)
+		}
+		return task, nil, nil
+	}
+
+	// Compute next due date.
+	nextDue, err := nextOccurrence(*task.DueDate, *task.Recurrence)
+	if err != nil {
+		return nil, nil, fmt.Errorf("compute next occurrence: %w", err)
+	}
+
+	// Determine the first status for the project (lowest position).
+	var firstStatus string
+	if err = tx.QueryRowContext(ctx,
+		`SELECT status FROM project_statuses WHERE project_id = ? ORDER BY position LIMIT 1`,
+		task.ProjectID,
+	).Scan(&firstStatus); err != nil {
+		return nil, nil, fmt.Errorf("get first status: %w", err)
+	}
+
+	// Compute position for the new task (appended to top-level siblings).
+	var pos int
+	if err = tx.QueryRowContext(ctx,
+		`SELECT COALESCE(MAX(position), -1) + 1 FROM tasks WHERE project_id = ? AND parent_id IS NULL`,
+		task.ProjectID,
+	).Scan(&pos); err != nil {
+		return nil, nil, fmt.Errorf("compute position: %w", err)
+	}
+
+	// Build the next occurrence task.
+	newID := uuid.New().String()
+	newTask := &model.Task{
+		ID:          newID,
+		ProjectID:   task.ProjectID,
+		Name:        task.Name,
+		Description: task.Description,
+		Status:      firstStatus,
+		DueDate:     &nextDue,
+		OwnerID:     task.OwnerID,
+		AssigneeID:  task.AssigneeID,
+		Position:    pos,
+		Recurrence:  task.Recurrence,
+	}
+
+	if _, err = tx.ExecContext(ctx,
+		`INSERT INTO tasks
+		   (id, project_id, parent_id, name, description, status, due_date,
+		    owner_id, assignee_id, position, recurrence)
+		 VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		newTask.ID, newTask.ProjectID, newTask.Name, newTask.Description,
+		newTask.Status, newTask.DueDate, newTask.OwnerID, newTask.AssigneeID,
+		newTask.Position, newTask.Recurrence,
+	); err != nil {
+		return nil, nil, fmt.Errorf("insert next occurrence: %w", err)
+	}
+
+	// Copy tags from the original task.
+	if _, err = tx.ExecContext(ctx,
+		`INSERT OR IGNORE INTO task_tags (task_id, tag) SELECT ?, tag FROM task_tags WHERE task_id = ?`,
+		newID, id,
+	); err != nil {
+		return nil, nil, fmt.Errorf("copy tags: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, nil, fmt.Errorf("commit: %w", err)
+	}
+
+	// Re-fetch the new task so timestamps are populated.
+	createdRows, err := s.db.QueryContext(ctx,
+		`SELECT id, project_id, parent_id, name, description,
+		        status, due_date, owner_id, assignee_id, position, recurrence, created_at, updated_at
+		 FROM tasks WHERE id = ?`, newID)
+	if err != nil {
+		return task, newTask, nil // best-effort if re-fetch fails
+	}
+	defer createdRows.Close()
+	if createdRows.Next() {
+		if fetched, ferr := scanTask(createdRows); ferr == nil {
+			newTask = fetched
+		}
+	}
+
+	return task, newTask, nil
 }
 
 // Delete removes a task by ID. The DB CASCADE removes subtasks and tags.
@@ -344,16 +483,20 @@ func parentIDsEqual(a, b *string) bool {
 func scanTask(rows *sql.Rows) (*model.Task, error) {
 	var t model.Task
 	var parentID sql.NullString
+	var recurrence sql.NullString
 	err := rows.Scan(
 		&t.ID, &t.ProjectID, &parentID, &t.Name, &t.Description,
 		&t.Status, &t.DueDate, &t.OwnerID, &t.AssigneeID, &t.Position,
-		&t.CreatedAt, &t.UpdatedAt,
+		&recurrence, &t.CreatedAt, &t.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("scan task: %w", err)
 	}
 	if parentID.Valid {
 		t.ParentID = &parentID.String
+	}
+	if recurrence.Valid {
+		t.Recurrence = &recurrence.String
 	}
 	return &t, nil
 }

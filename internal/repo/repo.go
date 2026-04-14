@@ -38,6 +38,11 @@ type TaskRepo interface {
 	Create(ctx context.Context, t *model.Task) error
 	Update(ctx context.Context, t *model.Task) error
 	Delete(ctx context.Context, id string) error
+	// CompleteTask sets the task's status to doneStatus, then — if the task has
+	// both a recurrence and a due_date — creates and returns a new task as the
+	// next occurrence. Returns (completedTask, nextTask, error).
+	// nextTask is nil when no recurrence is applicable.
+	CompleteTask(ctx context.Context, id, doneStatus string) (*model.Task, *model.Task, error)
 }
 
 type TagRepo interface {

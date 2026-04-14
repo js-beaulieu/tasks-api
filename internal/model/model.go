@@ -43,6 +43,7 @@ type Task struct {
 	OwnerID     string    `json:"owner_id"`
 	AssigneeID  *string   `json:"assignee_id,omitempty"`
 	Position    int       `json:"position"`
+	Recurrence  *string   `json:"recurrence,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }

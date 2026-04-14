@@ -422,6 +422,176 @@ func TestTasks_Move_BetweenProjects(t *testing.T) {
 	}
 }
 
+// ---- Recurrence ----
+
+func TestTasks_Create_WithRecurrence(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
+	proj := seed.Project(t, store, owner.ID)
+
+	rec := "FREQ=WEEKLY"
+	task := &model.Task{
+		ProjectID:  proj.ID,
+		Name:       "Weekly Task",
+		OwnerID:    owner.ID,
+		Status:     "todo",
+		Recurrence: &rec,
+	}
+	if err := store.Tasks.Create(ctx, task); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, err := store.Tasks.Get(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Recurrence == nil || *got.Recurrence != rec {
+		t.Errorf("Recurrence = %v, want %q", got.Recurrence, rec)
+	}
+}
+
+func TestTasks_CompleteTask_NonRecurring(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
+	proj := seed.Project(t, store, owner.ID)
+	task := seed.Task(t, store, proj.ID, owner.ID, nil)
+
+	completed, next, err := store.Tasks.CompleteTask(ctx, task.ID, "done")
+	if err != nil {
+		t.Fatalf("CompleteTask: %v", err)
+	}
+	if completed == nil {
+		t.Fatal("completed task is nil")
+	}
+	if completed.Status != "done" {
+		t.Errorf("completed.Status = %q, want done", completed.Status)
+	}
+	if next != nil {
+		t.Errorf("next = %v, want nil for non-recurring task", next)
+	}
+}
+
+func TestTasks_CompleteTask_RecurringNoDueDate(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
+	proj := seed.Project(t, store, owner.ID)
+
+	rec := "FREQ=DAILY"
+	task := &model.Task{
+		ProjectID:  proj.ID,
+		Name:       "Daily Task",
+		OwnerID:    owner.ID,
+		Status:     "todo",
+		Recurrence: &rec,
+		// intentionally no DueDate
+	}
+	if err := store.Tasks.Create(ctx, task); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	_, _, err := store.Tasks.CompleteTask(ctx, task.ID, "done")
+	if err != repo.ErrConflict {
+		t.Errorf("err = %v, want repo.ErrConflict (recurring task requires due_date)", err)
+	}
+
+	// status must remain unchanged
+	got, err := store.Tasks.Get(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("Get after failed complete: %v", err)
+	}
+	if got.Status != "todo" {
+		t.Errorf("status = %q after failed complete, want todo (unchanged)", got.Status)
+	}
+}
+
+func TestTasks_CompleteTask_Recurring(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
+	proj := seed.Project(t, store, owner.ID)
+
+	due := "2026-04-14"
+	rec := "FREQ=DAILY"
+	task := &model.Task{
+		ProjectID:  proj.ID,
+		Name:       "Daily Task",
+		OwnerID:    owner.ID,
+		Status:     "todo",
+		DueDate:    &due,
+		Recurrence: &rec,
+	}
+	if err := store.Tasks.Create(ctx, task); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := store.Tags.Add(ctx, task.ID, "urgent"); err != nil {
+		t.Fatalf("Add tag: %v", err)
+	}
+
+	completed, next, err := store.Tasks.CompleteTask(ctx, task.ID, "done")
+	if err != nil {
+		t.Fatalf("CompleteTask: %v", err)
+	}
+
+	if completed == nil {
+		t.Fatal("completed task is nil")
+	}
+	if completed.Status != "done" {
+		t.Errorf("completed.Status = %q, want done", completed.Status)
+	}
+
+	if next == nil {
+		t.Fatal("next task is nil, want a new occurrence")
+	}
+	if next.ID == task.ID {
+		t.Error("next.ID must be a new UUID, not the same as the original")
+	}
+	if next.DueDate == nil || *next.DueDate != "2026-04-15" {
+		t.Errorf("next.DueDate = %v, want 2026-04-15", next.DueDate)
+	}
+	if next.Recurrence == nil || *next.Recurrence != rec {
+		t.Errorf("next.Recurrence = %v, want %q", next.Recurrence, rec)
+	}
+	if next.Status != "todo" {
+		t.Errorf("next.Status = %q, want todo (first project status)", next.Status)
+	}
+	if next.Name != task.Name {
+		t.Errorf("next.Name = %q, want %q", next.Name, task.Name)
+	}
+
+	// tags must be copied to the next occurrence
+	tags, err := store.Tags.ListForTask(ctx, next.ID)
+	if err != nil {
+		t.Fatalf("ListForTask next: %v", err)
+	}
+	if len(tags) != 1 || tags[0] != "urgent" {
+		t.Errorf("next tags = %v, want [urgent]", tags)
+	}
+}
+
+func TestTasks_CompleteTask_InvalidDoneStatus(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
+	proj := seed.Project(t, store, owner.ID)
+	task := seed.Task(t, store, proj.ID, owner.ID, nil)
+
+	_, _, err := store.Tasks.CompleteTask(ctx, task.ID, "nonexistent_status")
+	if err != repo.ErrConflict {
+		t.Errorf("err = %v, want repo.ErrConflict (invalid done_status)", err)
+	}
+
+	got, err := store.Tasks.Get(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status != "todo" {
+		t.Errorf("status = %q after failed complete, want todo (unchanged)", got.Status)
+	}
+}
+
 // ---- Cycle guard ----
 
 func TestTasks_CycleGuard(t *testing.T) {
