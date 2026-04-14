@@ -107,6 +107,55 @@ func TestCreateProject(t *testing.T) {
 			t.Fatalf("status = %d, want 400", w.Code)
 		}
 	})
+
+	t.Run("POST /projects with statuses forwards them to Create", func(t *testing.T) {
+		var gotStatuses []string
+		pr := &mock.ProjectRepo{
+			CreateFn: func(_ context.Context, _ *model.Project, additionalStatuses ...string) error {
+				gotStatuses = additionalStatuses
+				return nil
+			},
+		}
+		handler := projects.NewRouter(pr, &mock.TaskRepo{})
+		req := newRequest(http.MethodPost, "/", map[string]any{
+			"name":     "Ma liste",
+			"statuses": []string{"À faire", "En cours", "En attente"},
+		})
+		w := serve(handler, defaultUserRepo(), req)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201", w.Code)
+		}
+		want := []string{"À faire", "En cours", "En attente"}
+		if len(gotStatuses) != len(want) {
+			t.Fatalf("gotStatuses = %v, want %v", gotStatuses, want)
+		}
+		for i, s := range want {
+			if gotStatuses[i] != s {
+				t.Errorf("gotStatuses[%d] = %q, want %q", i, gotStatuses[i], s)
+			}
+		}
+	})
+
+	t.Run("POST /projects without statuses passes empty variadic", func(t *testing.T) {
+		var gotStatuses []string
+		pr := &mock.ProjectRepo{
+			CreateFn: func(_ context.Context, _ *model.Project, additionalStatuses ...string) error {
+				gotStatuses = additionalStatuses
+				return nil
+			},
+		}
+		handler := projects.NewRouter(pr, &mock.TaskRepo{})
+		req := newRequest(http.MethodPost, "/", map[string]any{"name": "Simple"})
+		w := serve(handler, defaultUserRepo(), req)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201", w.Code)
+		}
+		if len(gotStatuses) != 0 {
+			t.Errorf("gotStatuses = %v, want empty", gotStatuses)
+		}
+	})
 }
 
 // ── ProjectCtx middleware ──────────────────────────────────────────────────

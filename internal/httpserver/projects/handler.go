@@ -105,10 +105,11 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 }
 
 type createProjectReq struct {
-	Name        string  `json:"name"`
-	Description *string `json:"description"`
-	DueDate     *string `json:"due_date"`
-	AssigneeID  *string `json:"assignee_id"`
+	Name        string   `json:"name"`
+	Description *string  `json:"description"`
+	DueDate     *string  `json:"due_date"`
+	AssigneeID  *string  `json:"assignee_id"`
+	Statuses    []string `json:"statuses,omitempty"`
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
@@ -130,7 +131,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		OwnerID:     user.ID,
 		AssigneeID:  body.AssigneeID,
 	}
-	if err := h.projects.Create(r.Context(), p); err != nil {
+	if err := h.projects.Create(r.Context(), p, body.Statuses...); err != nil {
 		render.Error(w, http.StatusInternalServerError, "internal error")
 		return
 	}
