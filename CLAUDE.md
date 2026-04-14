@@ -6,12 +6,12 @@ Backend API for a task management application. Exposes a REST API and an MCP (Mo
 
 ```bash
 task build              # build all packages
-task test               # unit tests only (no DB)
-task test:integration   # integration tests (SQLite, real DB)
-task test:all           # all tests including integration
+task test               # all tests (unit + integration)
+task test:unit          # unit tests only (no DB)
+task test:integration   # integration tests only (SQLite, real DB)
 task fmt                # gofmt -w .
 task lint               # golangci-lint via go tool (pinned in go.mod)
-task check              # fmt + lint + build + test (pre-commit)
+task check              # fmt + lint + build + test:unit (pre-commit)
 ```
 
 ## Structure
