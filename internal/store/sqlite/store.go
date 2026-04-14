@@ -17,6 +17,7 @@ type Store struct {
 // New wires up a Store from an open *sql.DB.
 func New(db *sql.DB) *Store {
 	return &Store{
-		Users: &userStore{db: db},
+		Users:    &userStore{db: db},
+		Projects: &projectStore{db: db},
 	}
 }

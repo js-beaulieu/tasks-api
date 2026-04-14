@@ -7,19 +7,11 @@ import (
 	"testing"
 
 	"github.com/js-beaulieu/tasks/internal/repo"
-	"github.com/js-beaulieu/tasks/internal/store/sqlite"
+	testdb "github.com/js-beaulieu/tasks/internal/testing/db"
 )
 
-const testDSN = "file::memory:?cache=shared&_pragma=foreign_keys(ON)"
-
 func TestUsers_GetOrCreate(t *testing.T) {
-	db, err := sqlite.Open(testDSN)
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	defer db.Close()
-
-	store := sqlite.New(db)
+	_, store := testdb.Open(t)
 	ctx := context.Background()
 
 	t.Run("creates a new user", func(t *testing.T) {
@@ -60,13 +52,7 @@ func TestUsers_GetOrCreate(t *testing.T) {
 }
 
 func TestUsers_GetByID(t *testing.T) {
-	db, err := sqlite.Open(testDSN)
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	defer db.Close()
-
-	store := sqlite.New(db)
+	_, store := testdb.Open(t)
 	ctx := context.Background()
 
 	t.Run("existing user", func(t *testing.T) {
