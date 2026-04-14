@@ -97,7 +97,7 @@ func TestListProjects(t *testing.T) {
 func TestCreateProject(t *testing.T) {
 	t.Run("POST /projects missing name returns 400", func(t *testing.T) {
 		pr := &mock.ProjectRepo{
-			CreateFn: func(_ context.Context, _ *model.Project) error { return nil },
+			CreateFn: func(_ context.Context, _ *model.Project, _ ...string) error { return nil },
 		}
 		handler := projects.NewRouter(pr, &mock.TaskRepo{})
 		req := newRequest(http.MethodPost, "/", map[string]any{})

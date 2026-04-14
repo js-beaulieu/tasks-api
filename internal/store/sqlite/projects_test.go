@@ -12,6 +12,79 @@ import (
 	"github.com/js-beaulieu/tasks/internal/testing/seed"
 )
 
+// ---- CreateProject additional statuses ----
+
+func TestCreateProject_AdditionalStatuses(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("no extra statuses seeds exactly 4 defaults", func(t *testing.T) {
+		_, store := testdb.Open(t)
+		owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
+		p := &model.Project{Name: "P1", OwnerID: owner.ID}
+		if err := store.Projects.Create(ctx, p); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		statuses, err := store.Projects.ListStatuses(ctx, p.ID)
+		if err != nil {
+			t.Fatalf("ListStatuses: %v", err)
+		}
+		if len(statuses) != len(model.DefaultStatuses) {
+			t.Fatalf("len(statuses) = %d, want %d", len(statuses), len(model.DefaultStatuses))
+		}
+		for i, s := range statuses {
+			if s.Status != model.DefaultStatuses[i] {
+				t.Errorf("statuses[%d] = %q, want %q", i, s.Status, model.DefaultStatuses[i])
+			}
+			if s.Position != i {
+				t.Errorf("statuses[%d].Position = %d, want %d", i, s.Position, i)
+			}
+		}
+	})
+
+	t.Run("extra statuses appended after defaults", func(t *testing.T) {
+		_, store := testdb.Open(t)
+		owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
+		p := &model.Project{Name: "P2", OwnerID: owner.ID}
+		if err := store.Projects.Create(ctx, p, "À faire", "En cours"); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		statuses, err := store.Projects.ListStatuses(ctx, p.ID)
+		if err != nil {
+			t.Fatalf("ListStatuses: %v", err)
+		}
+		if len(statuses) != 6 {
+			t.Fatalf("len(statuses) = %d, want 6", len(statuses))
+		}
+		extras := statuses[4:]
+		if extras[0].Status != "À faire" || extras[0].Position != 4 {
+			t.Errorf("extras[0] = {%q, %d}, want {%q, 4}", extras[0].Status, extras[0].Position, "À faire")
+		}
+		if extras[1].Status != "En cours" || extras[1].Position != 5 {
+			t.Errorf("extras[1] = {%q, %d}, want {%q, 5}", extras[1].Status, extras[1].Position, "En cours")
+		}
+	})
+
+	t.Run("extra status duplicating a default is silently skipped", func(t *testing.T) {
+		_, store := testdb.Open(t)
+		owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
+		p := &model.Project{Name: "P3", OwnerID: owner.ID}
+		if err := store.Projects.Create(ctx, p, "todo", "extra"); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		statuses, err := store.Projects.ListStatuses(ctx, p.ID)
+		if err != nil {
+			t.Fatalf("ListStatuses: %v", err)
+		}
+		// "todo" is a duplicate — only "extra" should be appended
+		if len(statuses) != 5 {
+			t.Fatalf("len(statuses) = %d, want 5 (4 defaults + 1 non-duplicate extra)", len(statuses))
+		}
+		if statuses[4].Status != "extra" {
+			t.Errorf("statuses[4] = %q, want %q", statuses[4].Status, "extra")
+		}
+	})
+}
+
 // ---- Create / Get ----
 
 func TestProjects_CreateGet(t *testing.T) {

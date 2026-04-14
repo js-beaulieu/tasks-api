@@ -11,7 +11,7 @@ import (
 type ProjectRepo struct {
 	ListFn             func(ctx context.Context, userID string) ([]*model.Project, error)
 	GetFn              func(ctx context.Context, id string) (*model.Project, error)
-	CreateFn           func(ctx context.Context, p *model.Project) error
+	CreateFn           func(ctx context.Context, p *model.Project, additionalStatuses ...string) error
 	UpdateFn           func(ctx context.Context, p *model.Project) error
 	DeleteFn           func(ctx context.Context, id string) error
 	GetMemberRoleFn    func(ctx context.Context, projectID, userID string) (string, error)
@@ -32,8 +32,8 @@ func (m *ProjectRepo) Get(ctx context.Context, id string) (*model.Project, error
 	return m.GetFn(ctx, id)
 }
 
-func (m *ProjectRepo) Create(ctx context.Context, p *model.Project) error {
-	return m.CreateFn(ctx, p)
+func (m *ProjectRepo) Create(ctx context.Context, p *model.Project, additionalStatuses ...string) error {
+	return m.CreateFn(ctx, p, additionalStatuses...)
 }
 
 func (m *ProjectRepo) Update(ctx context.Context, p *model.Project) error {

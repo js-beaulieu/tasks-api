@@ -64,7 +64,9 @@ func (s *projectStore) Get(ctx context.Context, id string) (*model.Project, erro
 
 // Create inserts a new project and seeds the 4 default statuses in one tx.
 // p.ID is always overwritten with a new UUID.
-func (s *projectStore) Create(ctx context.Context, p *model.Project) error {
+// Additional statuses are appended after the defaults (positions 4, 5, …).
+// Any additional status that matches a default (case-sensitive) is silently skipped.
+func (s *projectStore) Create(ctx context.Context, p *model.Project, additionalStatuses ...string) error {
 	p.ID = uuid.New().String()
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -90,6 +92,25 @@ func (s *projectStore) Create(ctx context.Context, p *model.Project) error {
 		if err != nil {
 			return fmt.Errorf("seed status %q: %w", status, err)
 		}
+	}
+
+	defaults := make(map[string]bool, len(model.DefaultStatuses))
+	for _, d := range model.DefaultStatuses {
+		defaults[d] = true
+	}
+	pos := len(model.DefaultStatuses)
+	for _, status := range additionalStatuses {
+		if defaults[status] {
+			continue
+		}
+		_, err = tx.ExecContext(ctx,
+			`INSERT INTO project_statuses (project_id, status, position) VALUES (?, ?, ?)`,
+			p.ID, status, pos,
+		)
+		if err != nil {
+			return fmt.Errorf("seed extra status %q: %w", status, err)
+		}
+		pos++
 	}
 
 	return tx.Commit()

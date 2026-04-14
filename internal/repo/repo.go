@@ -19,7 +19,7 @@ type UserRepo interface {
 type ProjectRepo interface {
 	List(ctx context.Context, userID string) ([]*model.Project, error)
 	Get(ctx context.Context, id string) (*model.Project, error)
-	Create(ctx context.Context, p *model.Project) error
+	Create(ctx context.Context, p *model.Project, additionalStatuses ...string) error
 	Update(ctx context.Context, p *model.Project) error
 	Delete(ctx context.Context, id string) error
 	GetMemberRole(ctx context.Context, projectID, userID string) (string, error)
