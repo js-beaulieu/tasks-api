@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+
 	"github.com/js-beaulieu/tasks/internal/httpserver"
 	"github.com/js-beaulieu/tasks/internal/mcpserver"
 )

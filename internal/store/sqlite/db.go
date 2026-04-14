@@ -25,17 +25,17 @@ func Open(dsn string) (*sql.DB, error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 	if err := db.Ping(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
 	}
 
 	goose.SetBaseFS(migrationsFS)
 	if err := goose.SetDialect("sqlite3"); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("goose set dialect: %w", err)
 	}
 	if err := goose.Up(db, "migrations"); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("goose up: %w", err)
 	}
 
