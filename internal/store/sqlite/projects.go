@@ -29,7 +29,7 @@ func (s *projectStore) List(ctx context.Context, userID string) ([]*model.Projec
 	if err != nil {
 		return nil, fmt.Errorf("list projects: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var projects []*model.Project
 	for rows.Next() {
@@ -51,7 +51,7 @@ func (s *projectStore) Get(ctx context.Context, id string) (*model.Project, erro
 	if err != nil {
 		return nil, fmt.Errorf("get project: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
@@ -175,7 +175,7 @@ func (s *projectStore) ListMembers(ctx context.Context, projectID string) ([]*mo
 	if err != nil {
 		return nil, fmt.Errorf("list members: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var members []*model.ProjectMember
 	for rows.Next() {
@@ -237,7 +237,7 @@ func (s *projectStore) ListStatuses(ctx context.Context, projectID string) ([]*m
 	if err != nil {
 		return nil, fmt.Errorf("list statuses: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var statuses []*model.ProjectStatus
 	for rows.Next() {
