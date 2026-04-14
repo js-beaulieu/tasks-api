@@ -1,17 +1,11 @@
-linters:
+version: "2"
+
+# errcheck, govet, ineffassign, staticcheck, unused are enabled by default.
+
+formatters:
   enable:
-    - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
     - gofmt
     - goimports
-
-linters-settings:
-  goimports:
-    local-prefixes: github.com/js-beaulieu/tasks
-
-issues:
-  exclude-use-default: false
+  settings:
+    goimports:
+      local-prefixes: github.com/js-beaulieu/tasks
