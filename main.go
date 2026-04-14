@@ -22,7 +22,7 @@ func main() {
 
 	r := chi.NewRouter()
 	r.Mount("/", httpserver.New(s))
-	r.Handle("/mcp", mcpserver.Handler())
+	r.Handle("/mcp", mcpserver.Handler(s))
 
 	log.Println("Listening on :8080")
 	log.Fatal(http.ListenAndServe(":8080", r))

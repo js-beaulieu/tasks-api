@@ -34,7 +34,7 @@ func TestHealthHandler(t *testing.T) {
 }
 
 func TestNewServerHasHealthTool(t *testing.T) {
-	s := New()
+	s := New(nil)
 	if s == nil {
 		t.Fatal("expected non-nil server")
 	}
