@@ -291,6 +291,105 @@ func TestAddTag(t *testing.T) {
 	})
 }
 
+// ── POST /tasks/{id}/complete ─────────────────────────────────────────────
+
+func TestCompleteTask(t *testing.T) {
+	t.Run("POST /task-1/complete non-recurring returns 200 with next=null", func(t *testing.T) {
+		completed := newTestTask()
+		completed.Status = "done"
+
+		tr := taskRepoFound()
+		tr.CompleteTaskFn = func(_ context.Context, _, _ string) (*model.Task, *model.Task, error) {
+			return completed, nil, nil
+		}
+		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := serve(handler, newRequest(http.MethodPost, "/task-1/complete", map[string]any{
+			"done_status": "done",
+		}))
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		var resp struct {
+			Completed *model.Task `json:"completed"`
+			Next      *model.Task `json:"next"`
+		}
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if resp.Completed == nil {
+			t.Error("completed is nil")
+		}
+		if resp.Next != nil {
+			t.Errorf("next = %v, want null for non-recurring", resp.Next)
+		}
+	})
+
+	t.Run("POST /task-1/complete recurring returns 200 with next task", func(t *testing.T) {
+		completed := newTestTask()
+		completed.Status = "done"
+		nextDue := "2026-04-15"
+		nextTask := &model.Task{
+			ID:        "task-2",
+			ProjectID: "proj-1",
+			Name:      "Fix bug",
+			Status:    "todo",
+			DueDate:   &nextDue,
+		}
+
+		tr := taskRepoFound()
+		tr.CompleteTaskFn = func(_ context.Context, _, _ string) (*model.Task, *model.Task, error) {
+			return completed, nextTask, nil
+		}
+		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := serve(handler, newRequest(http.MethodPost, "/task-1/complete", map[string]any{
+			"done_status": "done",
+		}))
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		var resp struct {
+			Completed *model.Task `json:"completed"`
+			Next      *model.Task `json:"next"`
+		}
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if resp.Completed == nil {
+			t.Error("completed is nil")
+		}
+		if resp.Next == nil {
+			t.Fatal("next is nil, want next occurrence")
+		}
+		if resp.Next.ID != "task-2" {
+			t.Errorf("next.ID = %q, want task-2", resp.Next.ID)
+		}
+	})
+
+	t.Run("POST /task-1/complete with read role returns 403", func(t *testing.T) {
+		handler := tasks.NewRouter(projectRepoWithRole(model.RoleRead), taskRepoFound(), &mock.TagRepo{})
+		w := serve(handler, newRequest(http.MethodPost, "/task-1/complete", map[string]any{
+			"done_status": "done",
+		}))
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("status = %d, want 403", w.Code)
+		}
+	})
+
+	t.Run("POST /task-1/complete invalid done_status returns 409", func(t *testing.T) {
+		tr := taskRepoFound()
+		tr.CompleteTaskFn = func(_ context.Context, _, _ string) (*model.Task, *model.Task, error) {
+			return nil, nil, repo.ErrConflict
+		}
+		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := serve(handler, newRequest(http.MethodPost, "/task-1/complete", map[string]any{
+			"done_status": "nonexistent",
+		}))
+		if w.Code != http.StatusConflict {
+			t.Fatalf("status = %d, want 409", w.Code)
+		}
+	})
+}
+
 // ── DELETE /tasks/{id}/tags/{tag} ─────────────────────────────────────────
 
 func TestDeleteTag(t *testing.T) {

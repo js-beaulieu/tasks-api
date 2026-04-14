@@ -56,6 +56,7 @@ func NewRouter(projects repo.ProjectRepo, tasks repo.TaskRepo, tags repo.TagRepo
 		r.Get("/", h.get)
 		r.Patch("/", h.update)
 		r.Delete("/", h.delete)
+		r.Post("/complete", h.completeTask)
 		r.Get("/tasks", h.listSubtasks)
 		r.Post("/tasks", h.createSubtask)
 		r.Get("/tags", h.listTags)
@@ -199,6 +200,44 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	render.NoContent(w)
+}
+
+// ── Complete ───────────────────────────────────────────────────────────────
+
+type completeTaskReq struct {
+	DoneStatus string `json:"done_status"`
+}
+
+type completeTaskResp struct {
+	Completed *model.Task `json:"completed"`
+	Next      *model.Task `json:"next"`
+}
+
+func (h *Handler) completeTask(w http.ResponseWriter, r *http.Request) {
+	if !requireRole(model.RoleModify, taskRoleFromCtx(r.Context())) {
+		render.Forbidden(w)
+		return
+	}
+	var body completeTaskReq
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		render.BadRequest(w, "invalid JSON")
+		return
+	}
+	if strings.TrimSpace(body.DoneStatus) == "" {
+		render.BadRequest(w, "done_status is required")
+		return
+	}
+	t := taskFromCtx(r.Context())
+	completed, next, err := h.tasks.CompleteTask(r.Context(), t.ID, body.DoneStatus)
+	if err != nil {
+		if errors.Is(err, repo.ErrConflict) {
+			render.Error(w, http.StatusConflict, "invalid done_status or missing due_date for recurring task")
+			return
+		}
+		render.Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	render.JSON(w, http.StatusOK, completeTaskResp{Completed: completed, Next: next})
 }
 
 // ── Subtasks ───────────────────────────────────────────────────────────────
