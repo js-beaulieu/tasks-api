@@ -100,10 +100,14 @@ type createTaskInput struct {
 	AssigneeID  *string `json:"assignee_id,omitempty"`
 }
 
-func CreateTaskHandler(tasks repo.TaskRepo) mcp.ToolHandlerFor[createTaskInput, any] {
+func CreateTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo) mcp.ToolHandlerFor[createTaskInput, any] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in createTaskInput) (*mcp.CallToolResult, any, error) {
 		if in.UserID == "" || in.ProjectID == "" || in.Name == "" {
 			return nil, nil, errors.New("user_id, project_id, and name are required")
+		}
+		role, err := projectsRepo.GetMemberRole(ctx, in.ProjectID, in.UserID)
+		if err != nil || !projects.RequireRole(model.RoleModify, role) {
+			return nil, nil, errors.New("no access")
 		}
 		status := in.Status
 		if status == "" {
@@ -135,7 +139,9 @@ var UpdateTaskTool = &mcp.Tool{
 }
 
 type updateTaskInput struct {
+	UserID      string  `json:"user_id"`
 	TaskID      string  `json:"task_id"`
+	ProjectID   *string `json:"project_id,omitempty"`
 	Name        *string `json:"name,omitempty"`
 	Description *string `json:"description,omitempty"`
 	Status      *string `json:"status,omitempty"`
@@ -144,14 +150,24 @@ type updateTaskInput struct {
 	Position    *int    `json:"position,omitempty"`
 }
 
-func UpdateTaskHandler(tasks repo.TaskRepo) mcp.ToolHandlerFor[updateTaskInput, any] {
+func UpdateTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo) mcp.ToolHandlerFor[updateTaskInput, any] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in updateTaskInput) (*mcp.CallToolResult, any, error) {
-		if in.TaskID == "" {
-			return nil, nil, errors.New("task_id is required")
+		if in.UserID == "" || in.TaskID == "" {
+			return nil, nil, errors.New("user_id and task_id are required")
 		}
 		t, err := tasks.Get(ctx, in.TaskID)
 		if err != nil {
 			return nil, nil, err
+		}
+		role, err := projectsRepo.GetMemberRole(ctx, t.ProjectID, in.UserID)
+		if err != nil || !projects.RequireRole(model.RoleModify, role) {
+			return nil, nil, errors.New("no access")
+		}
+		if in.ProjectID != nil && *in.ProjectID != t.ProjectID {
+			targetRole, err := projectsRepo.GetMemberRole(ctx, *in.ProjectID, in.UserID)
+			if err != nil || !projects.RequireRole(model.RoleModify, targetRole) {
+				return nil, nil, errors.New("no access to target project")
+			}
 		}
 		if in.Name != nil {
 			t.Name = *in.Name
@@ -170,6 +186,9 @@ func UpdateTaskHandler(tasks repo.TaskRepo) mcp.ToolHandlerFor[updateTaskInput, 
 		}
 		if in.Position != nil {
 			t.Position = *in.Position
+		}
+		if in.ProjectID != nil {
+			t.ProjectID = *in.ProjectID
 		}
 		if err := tasks.Update(ctx, t); err != nil {
 			return nil, nil, err

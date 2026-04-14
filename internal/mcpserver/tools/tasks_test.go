@@ -122,6 +122,12 @@ func TestGetTaskHandlerSuccess(t *testing.T) {
 }
 
 func TestCreateTaskHandlerExtra(t *testing.T) {
+	modifyPR := &mock.ProjectRepo{
+		GetMemberRoleFn: func(_ context.Context, _, _ string) (string, error) {
+			return model.RoleModify, nil
+		},
+	}
+
 	t.Run("empty status defaults to todo", func(t *testing.T) {
 		var captured *model.Task
 		tr := &mock.TaskRepo{
@@ -130,7 +136,7 @@ func TestCreateTaskHandlerExtra(t *testing.T) {
 				return nil
 			},
 		}
-		handler := CreateTaskHandler(tr)
+		handler := CreateTaskHandler(modifyPR, tr)
 		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, createTaskInput{
 			UserID: "u1", ProjectID: "p1", Name: "T",
 		})
@@ -146,7 +152,7 @@ func TestCreateTaskHandlerExtra(t *testing.T) {
 		tr := &mock.TaskRepo{
 			CreateFn: func(_ context.Context, _ *model.Task) error { return errors.New("db error") },
 		}
-		handler := CreateTaskHandler(tr)
+		handler := CreateTaskHandler(modifyPR, tr)
 		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, createTaskInput{
 			UserID: "u1", ProjectID: "p1", Name: "T",
 		})
@@ -157,14 +163,20 @@ func TestCreateTaskHandlerExtra(t *testing.T) {
 }
 
 func TestUpdateTaskHandlerErrors(t *testing.T) {
+	modifyPR := &mock.ProjectRepo{
+		GetMemberRoleFn: func(_ context.Context, _, _ string) (string, error) {
+			return model.RoleModify, nil
+		},
+	}
+
 	t.Run("Get error is propagated", func(t *testing.T) {
 		tr := &mock.TaskRepo{
 			GetFn: func(_ context.Context, _ string) (*model.Task, error) {
 				return nil, errors.New("db error")
 			},
 		}
-		handler := UpdateTaskHandler(tr)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{TaskID: "t1"})
+		handler := UpdateTaskHandler(modifyPR, tr)
+		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{UserID: "u1", TaskID: "t1"})
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -178,8 +190,8 @@ func TestUpdateTaskHandlerErrors(t *testing.T) {
 			},
 			UpdateFn: func(_ context.Context, _ *model.Task) error { return errors.New("db error") },
 		}
-		handler := UpdateTaskHandler(tr)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{TaskID: "t1", Name: &newName})
+		handler := UpdateTaskHandler(modifyPR, tr)
+		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{UserID: "u1", TaskID: "t1", Name: &newName})
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -301,11 +313,17 @@ func TestGetTaskHandler(t *testing.T) {
 }
 
 func TestCreateTaskHandler(t *testing.T) {
+	modifyPR := &mock.ProjectRepo{
+		GetMemberRoleFn: func(_ context.Context, _, _ string) (string, error) {
+			return model.RoleModify, nil
+		},
+	}
+
 	t.Run("valid input creates task and returns it", func(t *testing.T) {
 		tr := &mock.TaskRepo{
 			CreateFn: func(_ context.Context, _ *model.Task) error { return nil },
 		}
-		handler := CreateTaskHandler(tr)
+		handler := CreateTaskHandler(modifyPR, tr)
 		_, output, err := handler(context.Background(), &mcp.CallToolRequest{}, createTaskInput{
 			UserID:    "u1",
 			ProjectID: "p1",
@@ -320,7 +338,7 @@ func TestCreateTaskHandler(t *testing.T) {
 	})
 
 	t.Run("missing required fields returns error", func(t *testing.T) {
-		handler := CreateTaskHandler(&mock.TaskRepo{})
+		handler := CreateTaskHandler(&mock.ProjectRepo{}, &mock.TaskRepo{})
 		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, createTaskInput{UserID: "u1"})
 		if err == nil {
 			t.Fatal("expected error for missing project_id/name")
@@ -329,6 +347,12 @@ func TestCreateTaskHandler(t *testing.T) {
 }
 
 func TestUpdateTaskHandler(t *testing.T) {
+	modifyPR := &mock.ProjectRepo{
+		GetMemberRoleFn: func(_ context.Context, _, _ string) (string, error) {
+			return model.RoleModify, nil
+		},
+	}
+
 	t.Run("position change calls TaskRepo.Update", func(t *testing.T) {
 		updateCalled := false
 		tr := &mock.TaskRepo{
@@ -341,8 +365,9 @@ func TestUpdateTaskHandler(t *testing.T) {
 			},
 		}
 		pos := 3
-		handler := UpdateTaskHandler(tr)
+		handler := UpdateTaskHandler(modifyPR, tr)
 		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{
+			UserID:   "u1",
 			TaskID:   "t1",
 			Position: &pos,
 		})
@@ -355,10 +380,178 @@ func TestUpdateTaskHandler(t *testing.T) {
 	})
 
 	t.Run("missing task_id returns error", func(t *testing.T) {
-		handler := UpdateTaskHandler(&mock.TaskRepo{})
+		handler := UpdateTaskHandler(&mock.ProjectRepo{}, &mock.TaskRepo{})
 		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{})
 		if err == nil {
 			t.Fatal("expected error for missing task_id")
+		}
+	})
+}
+
+func TestCreateTaskAccessControl(t *testing.T) {
+	t.Run("read role is denied and Create not called", func(t *testing.T) {
+		createCalled := false
+		tr := &mock.TaskRepo{
+			CreateFn: func(_ context.Context, _ *model.Task) error {
+				createCalled = true
+				return nil
+			},
+		}
+		pr := &mock.ProjectRepo{
+			GetMemberRoleFn: func(_ context.Context, _, _ string) (string, error) {
+				return model.RoleRead, nil
+			},
+		}
+		handler := CreateTaskHandler(pr, tr)
+		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, createTaskInput{
+			UserID: "u1", ProjectID: "p1", Name: "T",
+		})
+		if err == nil {
+			t.Fatal("expected error for read role")
+		}
+		if createCalled {
+			t.Error("TaskRepo.Create should not be called")
+		}
+	})
+
+	t.Run("modify role allows create", func(t *testing.T) {
+		createCalled := false
+		tr := &mock.TaskRepo{
+			CreateFn: func(_ context.Context, _ *model.Task) error {
+				createCalled = true
+				return nil
+			},
+		}
+		pr := &mock.ProjectRepo{
+			GetMemberRoleFn: func(_ context.Context, _, _ string) (string, error) {
+				return model.RoleModify, nil
+			},
+		}
+		handler := CreateTaskHandler(pr, tr)
+		_, output, err := handler(context.Background(), &mcp.CallToolRequest{}, createTaskInput{
+			UserID: "u1", ProjectID: "p1", Name: "T",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if output == nil {
+			t.Fatal("expected non-nil output")
+		}
+		if !createCalled {
+			t.Error("TaskRepo.Create should have been called")
+		}
+	})
+}
+
+func TestUpdateTaskAccessControl(t *testing.T) {
+	t.Run("read role is denied and Update not called", func(t *testing.T) {
+		updateCalled := false
+		tr := &mock.TaskRepo{
+			GetFn: func(_ context.Context, id string) (*model.Task, error) {
+				return &model.Task{ID: id, ProjectID: "p1", Name: "T", Status: "todo", OwnerID: "u1"}, nil
+			},
+			UpdateFn: func(_ context.Context, _ *model.Task) error {
+				updateCalled = true
+				return nil
+			},
+		}
+		pr := &mock.ProjectRepo{
+			GetMemberRoleFn: func(_ context.Context, _, _ string) (string, error) {
+				return model.RoleRead, nil
+			},
+		}
+		newName := "X"
+		handler := UpdateTaskHandler(pr, tr)
+		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{
+			UserID: "u1", TaskID: "t1", Name: &newName,
+		})
+		if err == nil {
+			t.Fatal("expected error for read role")
+		}
+		if updateCalled {
+			t.Error("TaskRepo.Update should not be called")
+		}
+	})
+
+	t.Run("modify role same project allows update", func(t *testing.T) {
+		updateCalled := false
+		tr := &mock.TaskRepo{
+			GetFn: func(_ context.Context, id string) (*model.Task, error) {
+				return &model.Task{ID: id, ProjectID: "p1", Name: "T", Status: "todo", OwnerID: "u1"}, nil
+			},
+			UpdateFn: func(_ context.Context, _ *model.Task) error {
+				updateCalled = true
+				return nil
+			},
+		}
+		pr := &mock.ProjectRepo{
+			GetMemberRoleFn: func(_ context.Context, _, _ string) (string, error) {
+				return model.RoleModify, nil
+			},
+		}
+		newName := "X"
+		handler := UpdateTaskHandler(pr, tr)
+		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{
+			UserID: "u1", TaskID: "t1", Name: &newName,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !updateCalled {
+			t.Error("TaskRepo.Update should have been called")
+		}
+	})
+
+	t.Run("cross-project modify on source only is denied", func(t *testing.T) {
+		tr := &mock.TaskRepo{
+			GetFn: func(_ context.Context, id string) (*model.Task, error) {
+				return &model.Task{ID: id, ProjectID: "p1", Name: "T", Status: "todo", OwnerID: "u1"}, nil
+			},
+		}
+		pr := &mock.ProjectRepo{
+			GetMemberRoleFn: func(_ context.Context, projectID, _ string) (string, error) {
+				if projectID == "p1" {
+					return model.RoleModify, nil
+				}
+				return "", repo.ErrNoAccess
+			},
+		}
+		targetProject := "p2"
+		handler := UpdateTaskHandler(pr, tr)
+		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{
+			UserID: "u1", TaskID: "t1", ProjectID: &targetProject,
+		})
+		if err == nil {
+			t.Fatal("expected error: no modify on target project")
+		}
+	})
+
+	t.Run("cross-project modify on both allows update", func(t *testing.T) {
+		updateCalled := false
+		tr := &mock.TaskRepo{
+			GetFn: func(_ context.Context, id string) (*model.Task, error) {
+				return &model.Task{ID: id, ProjectID: "p1", Name: "T", Status: "todo", OwnerID: "u1"}, nil
+			},
+			UpdateFn: func(_ context.Context, _ *model.Task) error {
+				updateCalled = true
+				return nil
+			},
+		}
+		pr := &mock.ProjectRepo{
+			GetMemberRoleFn: func(_ context.Context, _, _ string) (string, error) {
+				return model.RoleModify, nil
+			},
+		}
+		targetProject := "p2"
+		handler := UpdateTaskHandler(pr, tr)
+		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{
+			UserID: "u1", TaskID: "t1", ProjectID: &targetProject,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !updateCalled {
+			t.Error("TaskRepo.Update should have been called")
 		}
 	})
 }
