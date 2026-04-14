@@ -29,14 +29,15 @@ func roleFromCtx(ctx context.Context) string {
 	return r
 }
 
-// Handler holds the projects repository dependency.
+// Handler holds the projects and tasks repository dependencies.
 type Handler struct {
 	projects repo.ProjectRepo
+	tasks    repo.TaskRepo
 }
 
 // NewRouter wires all /projects routes and returns the handler tree.
-func NewRouter(projects repo.ProjectRepo) http.Handler {
-	h := &Handler{projects: projects}
+func NewRouter(projects repo.ProjectRepo, tasks repo.TaskRepo) http.Handler {
+	h := &Handler{projects: projects, tasks: tasks}
 	r := chi.NewRouter()
 
 	r.Get("/", h.list)
@@ -57,8 +58,8 @@ func NewRouter(projects repo.ProjectRepo) http.Handler {
 		r.Post("/statuses", h.addStatus)
 		r.Delete("/statuses/{status}", h.deleteStatus)
 
-		r.Get("/tasks", h.listTasksStub)
-		r.Post("/tasks", h.createTaskStub)
+		r.Get("/tasks", h.listTasks)
+		r.Post("/tasks", h.createTask)
 	})
 
 	return r
@@ -345,12 +346,70 @@ func (h *Handler) deleteStatus(w http.ResponseWriter, r *http.Request) {
 	render.NoContent(w)
 }
 
-// ── Task stubs (wired for real in PR 7) ───────────────────────────────────
+// ── Tasks ──────────────────────────────────────────────────────────────────
 
-func (h *Handler) listTasksStub(w http.ResponseWriter, r *http.Request) {
-	render.JSON(w, http.StatusOK, []*model.Task{})
+func (h *Handler) listTasks(w http.ResponseWriter, r *http.Request) {
+	p := projectFromCtx(r.Context())
+	q := r.URL.Query()
+	var f repo.TaskFilter
+	if s := q.Get("status"); s != "" {
+		f.Status = &s
+	}
+	if a := q.Get("assignee_id"); a != "" {
+		f.AssigneeID = &a
+	}
+	if tag := q.Get("tag"); tag != "" {
+		f.Tag = &tag
+	}
+	list, err := h.tasks.ListChildren(r.Context(), p.ID, nil, f)
+	if err != nil {
+		render.Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	render.JSON(w, http.StatusOK, list)
 }
 
-func (h *Handler) createTaskStub(w http.ResponseWriter, _ *http.Request) {
-	render.Error(w, http.StatusNotImplemented, "not implemented")
+type createTaskReq struct {
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
+	Status      *string `json:"status"`
+	DueDate     *string `json:"due_date"`
+	AssigneeID  *string `json:"assignee_id"`
+}
+
+func (h *Handler) createTask(w http.ResponseWriter, r *http.Request) {
+	if !RequireRole(model.RoleModify, roleFromCtx(r.Context())) {
+		render.Forbidden(w)
+		return
+	}
+	var body createTaskReq
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		render.BadRequest(w, "invalid JSON")
+		return
+	}
+	if strings.TrimSpace(body.Name) == "" {
+		render.BadRequest(w, "name is required")
+		return
+	}
+	p := projectFromCtx(r.Context())
+	user := middleware.UserFromCtx(r.Context())
+	status := "todo"
+	if body.Status != nil {
+		status = *body.Status
+	}
+	t := &model.Task{
+		ID:          uuid.New().String(),
+		ProjectID:   p.ID,
+		Name:        body.Name,
+		Description: body.Description,
+		Status:      status,
+		DueDate:     body.DueDate,
+		OwnerID:     user.ID,
+		AssigneeID:  body.AssigneeID,
+	}
+	if err := h.tasks.Create(r.Context(), t); err != nil {
+		render.Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	render.JSON(w, http.StatusCreated, t)
 }

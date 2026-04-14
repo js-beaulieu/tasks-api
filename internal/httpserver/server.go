@@ -8,6 +8,8 @@ import (
 	"github.com/js-beaulieu/tasks/internal/httpserver/middleware"
 	"github.com/js-beaulieu/tasks/internal/httpserver/projects"
 	"github.com/js-beaulieu/tasks/internal/httpserver/render"
+	taskhandler "github.com/js-beaulieu/tasks/internal/httpserver/tasks"
+	taghandler "github.com/js-beaulieu/tasks/internal/httpserver/tags"
 	"github.com/js-beaulieu/tasks/internal/httpserver/users"
 	"github.com/js-beaulieu/tasks/internal/store/sqlite"
 )
@@ -17,7 +19,9 @@ func New(store *sqlite.Store) http.Handler {
 	r.Use(middleware.AuthMiddleware(store.Users))
 	r.Get("/health", healthHandler)
 	r.Mount("/users", users.NewRouter(store.Users))
-	r.Mount("/projects", projects.NewRouter(store.Projects))
+	r.Mount("/projects", projects.NewRouter(store.Projects, store.Tasks))
+	r.Mount("/tasks", taskhandler.NewRouter(store.Projects, store.Tasks, store.Tags))
+	r.Mount("/tags", taghandler.NewRouter(store.Tags))
 	return r
 }
 
