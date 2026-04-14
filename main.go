@@ -16,7 +16,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close() //nolint:errcheck // process is exiting, error not actionable
+	defer db.Close()
 
 	s := sqlite.New(db)
 

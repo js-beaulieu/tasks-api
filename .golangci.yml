@@ -2,6 +2,13 @@ version: "2"
 
 # errcheck, govet, ineffassign, staticcheck, unused are enabled by default.
 
+linters:
+  settings:
+    errcheck:
+      exclude-functions:
+        - (*database/sql.Rows).Close
+        - (*database/sql.DB).Close
+
 formatters:
   enable:
     - gofmt
