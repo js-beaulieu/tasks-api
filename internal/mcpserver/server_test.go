@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	testdb "github.com/js-beaulieu/tasks/internal/testing/db"
 )
 
 func TestHealthHandler(t *testing.T) {
@@ -37,5 +39,21 @@ func TestNewServerHasHealthTool(t *testing.T) {
 	s := New(nil)
 	if s == nil {
 		t.Fatal("expected non-nil server")
+	}
+}
+
+func TestNewServerWithStore(t *testing.T) {
+	_, store := testdb.Open(t)
+	s := New(store)
+	if s == nil {
+		t.Fatal("expected non-nil server with store")
+	}
+}
+
+func TestHandler(t *testing.T) {
+	_, store := testdb.Open(t)
+	h := Handler(store)
+	if h == nil {
+		t.Fatal("expected non-nil http.Handler")
 	}
 }

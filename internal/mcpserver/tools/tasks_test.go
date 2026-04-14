@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -12,6 +13,177 @@ import (
 )
 
 func strPtr(s string) *string { return &s }
+
+func TestListTasksHandlerWithParentID(t *testing.T) {
+	t.Run("only parent_id fetches parent task and lists children", func(t *testing.T) {
+		tr := &mock.TaskRepo{
+			GetFn: func(_ context.Context, id string) (*model.Task, error) {
+				return &model.Task{ID: id, ProjectID: "p1", Name: "Parent", Status: "todo", OwnerID: "u1"}, nil
+			},
+			ListChildrenFn: func(_ context.Context, _ string, _ *string, _ repo.TaskFilter) ([]*model.Task, error) {
+				return []*model.Task{}, nil
+			},
+		}
+		handler := ListTasksHandler(tr)
+		_, output, err := handler(context.Background(), &mcp.CallToolRequest{}, listTasksInput{
+			ParentID: strPtr("parent-1"),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if output == nil {
+			t.Fatal("expected non-nil output")
+		}
+	})
+
+	t.Run("parent_id lookup error is propagated", func(t *testing.T) {
+		tr := &mock.TaskRepo{
+			GetFn: func(_ context.Context, _ string) (*model.Task, error) {
+				return nil, errors.New("db error")
+			},
+		}
+		handler := ListTasksHandler(tr)
+		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, listTasksInput{ParentID: strPtr("p1")})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+}
+
+func TestGetTaskHandlerSuccess(t *testing.T) {
+	t.Run("found task is returned without error", func(t *testing.T) {
+		tr := &mock.TaskRepo{
+			GetFn: func(_ context.Context, id string) (*model.Task, error) {
+				return &model.Task{ID: id, ProjectID: "p1", Name: "T", Status: "todo", OwnerID: "u1"}, nil
+			},
+		}
+		handler := GetTaskHandler(tr)
+		_, output, err := handler(context.Background(), &mcp.CallToolRequest{}, getTaskInput{TaskID: "t1"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if output == nil {
+			t.Fatal("expected non-nil output")
+		}
+	})
+}
+
+func TestCreateTaskHandlerExtra(t *testing.T) {
+	t.Run("empty status defaults to todo", func(t *testing.T) {
+		var captured *model.Task
+		tr := &mock.TaskRepo{
+			CreateFn: func(_ context.Context, t *model.Task) error {
+				captured = t
+				return nil
+			},
+		}
+		handler := CreateTaskHandler(tr)
+		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, createTaskInput{
+			UserID: "u1", ProjectID: "p1", Name: "T",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if captured == nil || captured.Status != "todo" {
+			t.Errorf("status = %q, want todo", captured.Status)
+		}
+	})
+
+	t.Run("repo error is propagated", func(t *testing.T) {
+		tr := &mock.TaskRepo{
+			CreateFn: func(_ context.Context, _ *model.Task) error { return errors.New("db error") },
+		}
+		handler := CreateTaskHandler(tr)
+		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, createTaskInput{
+			UserID: "u1", ProjectID: "p1", Name: "T",
+		})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+}
+
+func TestUpdateTaskHandlerErrors(t *testing.T) {
+	t.Run("Get error is propagated", func(t *testing.T) {
+		tr := &mock.TaskRepo{
+			GetFn: func(_ context.Context, _ string) (*model.Task, error) {
+				return nil, errors.New("db error")
+			},
+		}
+		handler := UpdateTaskHandler(tr)
+		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{TaskID: "t1"})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("Update error is propagated", func(t *testing.T) {
+		newName := "X"
+		tr := &mock.TaskRepo{
+			GetFn: func(_ context.Context, id string) (*model.Task, error) {
+				return &model.Task{ID: id, ProjectID: "p1", Name: "T", Status: "todo", OwnerID: "u1"}, nil
+			},
+			UpdateFn: func(_ context.Context, _ *model.Task) error { return errors.New("db error") },
+		}
+		handler := UpdateTaskHandler(tr)
+		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{TaskID: "t1", Name: &newName})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+}
+
+func TestDeleteTaskHandlerExtra(t *testing.T) {
+	t.Run("task not found returns error", func(t *testing.T) {
+		tr := &mock.TaskRepo{
+			GetFn: func(_ context.Context, _ string) (*model.Task, error) {
+				return nil, errors.New("not found")
+			},
+		}
+		handler := DeleteTaskHandler(&mock.ProjectRepo{}, tr)
+		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, deleteTaskInput{UserID: "u1", TaskID: "t1"})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("read-only role returns error", func(t *testing.T) {
+		tr := &mock.TaskRepo{
+			GetFn: func(_ context.Context, id string) (*model.Task, error) {
+				return &model.Task{ID: id, ProjectID: "p1", Name: "T", Status: "todo", OwnerID: "u1"}, nil
+			},
+		}
+		pr := &mock.ProjectRepo{
+			GetMemberRoleFn: func(_ context.Context, _, _ string) (string, error) {
+				return model.RoleRead, nil
+			},
+		}
+		handler := DeleteTaskHandler(pr, tr)
+		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, deleteTaskInput{UserID: "u1", TaskID: "t1"})
+		if err == nil {
+			t.Fatal("expected error for read-only role")
+		}
+	})
+
+	t.Run("Delete repo error is propagated", func(t *testing.T) {
+		tr := &mock.TaskRepo{
+			GetFn: func(_ context.Context, id string) (*model.Task, error) {
+				return &model.Task{ID: id, ProjectID: "p1", Name: "T", Status: "todo", OwnerID: "u1"}, nil
+			},
+			DeleteFn: func(_ context.Context, _ string) error { return errors.New("db error") },
+		}
+		pr := &mock.ProjectRepo{
+			GetMemberRoleFn: func(_ context.Context, _, _ string) (string, error) {
+				return model.RoleModify, nil
+			},
+		}
+		handler := DeleteTaskHandler(pr, tr)
+		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, deleteTaskInput{UserID: "u1", TaskID: "t1"})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+}
 
 func TestListTasksHandler(t *testing.T) {
 	t.Run("both project_id and parent_id returns error", func(t *testing.T) {

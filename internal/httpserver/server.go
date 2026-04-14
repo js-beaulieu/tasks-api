@@ -8,8 +8,8 @@ import (
 	"github.com/js-beaulieu/tasks/internal/httpserver/middleware"
 	"github.com/js-beaulieu/tasks/internal/httpserver/projects"
 	"github.com/js-beaulieu/tasks/internal/httpserver/render"
-	taskhandler "github.com/js-beaulieu/tasks/internal/httpserver/tasks"
 	taghandler "github.com/js-beaulieu/tasks/internal/httpserver/tags"
+	taskhandler "github.com/js-beaulieu/tasks/internal/httpserver/tasks"
 	"github.com/js-beaulieu/tasks/internal/httpserver/users"
 	"github.com/js-beaulieu/tasks/internal/store/sqlite"
 )

@@ -5,7 +5,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	testdb "github.com/js-beaulieu/tasks/internal/testing/db"
 )
+
+func TestNew(t *testing.T) {
+	_, store := testdb.Open(t)
+	h := New(store)
+	if h == nil {
+		t.Fatal("expected non-nil http.Handler")
+	}
+}
 
 func TestHealthHandler(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)

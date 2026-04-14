@@ -2,12 +2,28 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/js-beaulieu/tasks/internal/testing/mock"
 )
+
+func TestListTagsHandlerRepoError(t *testing.T) {
+	t.Run("repo error is propagated", func(t *testing.T) {
+		tr := &mock.TagRepo{
+			ListDistinctForUserFn: func(_ context.Context, _ string) ([]string, error) {
+				return nil, errors.New("db error")
+			},
+		}
+		handler := ListTagsHandler(tr)
+		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, listTagsInput{UserID: "u1"})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+}
 
 func TestListTagsHandler(t *testing.T) {
 	t.Run("valid user_id returns tag list without error", func(t *testing.T) {

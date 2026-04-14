@@ -12,6 +12,113 @@ import (
 	"github.com/js-beaulieu/tasks/internal/testing/mock"
 )
 
+func TestListProjectsHandlerRepoError(t *testing.T) {
+	t.Run("repo error is propagated", func(t *testing.T) {
+		pr := &mock.ProjectRepo{
+			ListFn: func(_ context.Context, _ string) ([]*model.Project, error) {
+				return nil, errors.New("db error")
+			},
+		}
+		handler := ListProjectsHandler(pr)
+		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, listProjectsInput{UserID: "u1"})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+}
+
+func TestGetProjectHandlerSuccess(t *testing.T) {
+	t.Run("found project returns it without error", func(t *testing.T) {
+		pr := &mock.ProjectRepo{
+			GetFn: func(_ context.Context, id string) (*model.Project, error) {
+				return &model.Project{ID: id, Name: "P", OwnerID: "u1"}, nil
+			},
+		}
+		handler := GetProjectHandler(pr)
+		_, output, err := handler(context.Background(), &mcp.CallToolRequest{}, getProjectInput{ProjectID: "p1"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if output == nil {
+			t.Fatal("expected non-nil output")
+		}
+	})
+}
+
+func TestCreateProjectHandlerRepoError(t *testing.T) {
+	t.Run("repo error is propagated", func(t *testing.T) {
+		pr := &mock.ProjectRepo{
+			CreateFn: func(_ context.Context, _ *model.Project, _ ...string) error {
+				return errors.New("db error")
+			},
+		}
+		handler := CreateProjectHandler(pr)
+		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, createProjectInput{UserID: "u1", Name: "P"})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+}
+
+func TestUpdateProjectHandlerErrors(t *testing.T) {
+	t.Run("Get error during field update is propagated", func(t *testing.T) {
+		newName := "X"
+		pr := &mock.ProjectRepo{
+			GetFn: func(_ context.Context, _ string) (*model.Project, error) {
+				return nil, errors.New("db error")
+			},
+		}
+		handler := UpdateProjectHandler(pr)
+		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateProjectInput{
+			UserID: "u1", ProjectID: "p1", Name: &newName,
+		})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("Update error is propagated", func(t *testing.T) {
+		newName := "X"
+		pr := &mock.ProjectRepo{
+			GetFn: func(_ context.Context, id string) (*model.Project, error) {
+				return &model.Project{ID: id, Name: "P", OwnerID: "u1"}, nil
+			},
+			UpdateFn: func(_ context.Context, _ *model.Project) error {
+				return errors.New("db error")
+			},
+		}
+		handler := UpdateProjectHandler(pr)
+		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateProjectInput{
+			UserID: "u1", ProjectID: "p1", Name: &newName,
+		})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("final Get error is propagated", func(t *testing.T) {
+		calls := 0
+		newName := "X"
+		pr := &mock.ProjectRepo{
+			GetFn: func(_ context.Context, id string) (*model.Project, error) {
+				calls++
+				if calls == 2 {
+					return nil, errors.New("db error on final Get")
+				}
+				return &model.Project{ID: id, Name: "P", OwnerID: "u1"}, nil
+			},
+			UpdateFn: func(_ context.Context, _ *model.Project) error { return nil },
+		}
+		handler := UpdateProjectHandler(pr)
+		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateProjectInput{
+			UserID: "u1", ProjectID: "p1", Name: &newName,
+		})
+		if err == nil {
+			t.Fatal("expected error on final Get")
+		}
+	})
+}
+
 func TestListProjectsHandler(t *testing.T) {
 	t.Run("valid user_id returns project list without error", func(t *testing.T) {
 		pr := &mock.ProjectRepo{
