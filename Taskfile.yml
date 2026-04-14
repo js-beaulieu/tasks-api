@@ -1,0 +1,40 @@
+version: '3'
+
+tasks:
+  build:
+    desc: Build all packages
+    cmds:
+      - go build ./...
+
+  test:
+    desc: Run unit tests (no DB)
+    cmds:
+      - go test ./...
+
+  test:integration:
+    desc: Run integration tests (requires SQLite)
+    cmds:
+      - go test ./internal/store/... -tags integration -v
+
+  test:all:
+    desc: Run all tests including integration
+    cmds:
+      - go test ./... -tags integration
+
+  fmt:
+    desc: Format all Go source files
+    cmds:
+      - gofmt -w .
+
+  lint:
+    desc: Run golangci-lint (pinned in go.mod, no install needed)
+    cmds:
+      - go tool golangci-lint run
+
+  check:
+    desc: fmt + lint + build + test (pre-commit sanity check)
+    cmds:
+      - task: fmt
+      - task: lint
+      - task: build
+      - task: test
