@@ -75,7 +75,7 @@ func TestListProjects(t *testing.T) {
 				return []*model.Project{testProject}, nil
 			},
 		}
-		handler := projects.NewRouter(pr)
+		handler := projects.NewRouter(pr, &mock.TaskRepo{})
 		req := newRequest(http.MethodGet, "/", nil)
 		w := serve(handler, defaultUserRepo(), req)
 
@@ -99,7 +99,7 @@ func TestCreateProject(t *testing.T) {
 		pr := &mock.ProjectRepo{
 			CreateFn: func(_ context.Context, _ *model.Project) error { return nil },
 		}
-		handler := projects.NewRouter(pr)
+		handler := projects.NewRouter(pr, &mock.TaskRepo{})
 		req := newRequest(http.MethodPost, "/", map[string]any{})
 		w := serve(handler, defaultUserRepo(), req)
 
@@ -118,7 +118,7 @@ func TestProjectCtx(t *testing.T) {
 				return nil, repo.ErrNotFound
 			},
 		}
-		handler := projects.NewRouter(pr)
+		handler := projects.NewRouter(pr, &mock.TaskRepo{})
 		req := newRequest(http.MethodGet, "/proj-1", nil)
 		w := serve(handler, defaultUserRepo(), req)
 
@@ -136,7 +136,7 @@ func TestProjectCtx(t *testing.T) {
 				return "", repo.ErrNoAccess
 			},
 		}
-		handler := projects.NewRouter(pr)
+		handler := projects.NewRouter(pr, &mock.TaskRepo{})
 		req := newRequest(http.MethodGet, "/proj-1", nil)
 		w := serve(handler, defaultUserRepo(), req)
 
@@ -151,7 +151,7 @@ func TestProjectCtx(t *testing.T) {
 func TestRoleEnforcement(t *testing.T) {
 	t.Run("PATCH /projects/{id} with read role returns 403", func(t *testing.T) {
 		pr := projectRepoWithAccess(model.RoleRead)
-		handler := projects.NewRouter(pr)
+		handler := projects.NewRouter(pr, &mock.TaskRepo{})
 		req := newRequest(http.MethodPatch, "/proj-1", map[string]any{"name": "New"})
 		w := serve(handler, defaultUserRepo(), req)
 
@@ -162,7 +162,7 @@ func TestRoleEnforcement(t *testing.T) {
 
 	t.Run("DELETE /projects/{id} with modify role returns 403", func(t *testing.T) {
 		pr := projectRepoWithAccess(model.RoleModify)
-		handler := projects.NewRouter(pr)
+		handler := projects.NewRouter(pr, &mock.TaskRepo{})
 		req := newRequest(http.MethodDelete, "/proj-1", nil)
 		w := serve(handler, defaultUserRepo(), req)
 
@@ -178,7 +178,7 @@ func TestMembers(t *testing.T) {
 	t.Run("POST /projects/{id}/members valid returns 201", func(t *testing.T) {
 		pr := projectRepoWithAccess(model.RoleAdmin)
 		pr.AddMemberFn = func(_ context.Context, _ *model.ProjectMember) error { return nil }
-		handler := projects.NewRouter(pr)
+		handler := projects.NewRouter(pr, &mock.TaskRepo{})
 		req := newRequest(http.MethodPost, "/proj-1/members", map[string]any{
 			"user_id": "user-2",
 			"role":    model.RoleRead,
@@ -192,7 +192,7 @@ func TestMembers(t *testing.T) {
 
 	t.Run("POST /projects/{id}/members invalid role returns 400", func(t *testing.T) {
 		pr := projectRepoWithAccess(model.RoleAdmin)
-		handler := projects.NewRouter(pr)
+		handler := projects.NewRouter(pr, &mock.TaskRepo{})
 		req := newRequest(http.MethodPost, "/proj-1/members", map[string]any{
 			"user_id": "user-2",
 			"role":    "superadmin",
@@ -213,7 +213,7 @@ func TestStatuses(t *testing.T) {
 		pr.DeleteStatusFn = func(_ context.Context, _, _ string) error {
 			return repo.ErrConflict
 		}
-		handler := projects.NewRouter(pr)
+		handler := projects.NewRouter(pr, &mock.TaskRepo{})
 		req := newRequest(http.MethodDelete, "/proj-1/statuses/todo", nil)
 		w := serve(handler, defaultUserRepo(), req)
 
@@ -224,7 +224,7 @@ func TestStatuses(t *testing.T) {
 
 	t.Run("POST /projects/{id}/statuses empty status returns 400", func(t *testing.T) {
 		pr := projectRepoWithAccess(model.RoleAdmin)
-		handler := projects.NewRouter(pr)
+		handler := projects.NewRouter(pr, &mock.TaskRepo{})
 		req := newRequest(http.MethodPost, "/proj-1/statuses", map[string]any{"status": "   "})
 		w := serve(handler, defaultUserRepo(), req)
 
