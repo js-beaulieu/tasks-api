@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tasks": {
+      "type": "http",
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
