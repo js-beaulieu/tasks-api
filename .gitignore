@@ -2,6 +2,7 @@
 *.exe
 *.exe~
 dist/
+tasks.db
 
 # Test cache & coverage
 *.test
@@ -21,3 +22,9 @@ desktop.ini
 .vscode/
 .idea/
 *.swp
+
+# Claude Code — local-only settings (may contain machine-specific paths)
+.claude/settings.local.json
+
+# Temporary files
+tmp/
