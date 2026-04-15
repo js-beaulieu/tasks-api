@@ -18,7 +18,23 @@ func main() {
 		os.Exit(1)
 	}
 
-	re := regexp.MustCompile(strings.Join(os.Args[1:], "|"))
+	args := os.Args[1:]
+	for i, arg := range args {
+		if arg == "." {
+			// Resolve "." to the root package import path so callers don't
+			// need to hard-code the module name (and thus the username).
+			out, err := exec.Command("go", "list", ".").Output()
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			root := strings.TrimSpace(string(out))
+			// Anchor both ends so only the exact root package is excluded.
+			args[i] = "^" + regexp.QuoteMeta(root) + "$"
+		}
+	}
+
+	re := regexp.MustCompile(strings.Join(args, "|"))
 
 	out, err := exec.Command("go", "list", "./...").Output()
 	if err != nil {

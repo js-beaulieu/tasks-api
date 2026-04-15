@@ -7,9 +7,9 @@ tasks:
       - go build ./...
 
   check:
-    desc: fmt + lint + build + test (pre-commit sanity check)
+    desc: format + lint + build + test (pre-commit sanity check)
     deps:
-      - fmt
+      - format
       - lint
       - build
       - test:coverage
@@ -19,7 +19,7 @@ tasks:
     cmds:
       - go tool air
 
-  fmt:
+  format:
     desc: Format all Go source files
     cmds:
       - gofmt -w .
@@ -52,7 +52,7 @@ tasks:
       EXCLUDE:
         - internal/testing
         - internal/model
-        - beaulieu/tasks$
+        - .
         - scripts
       PKGS:
         sh: go run ./scripts/pkgs {{join " " .EXCLUDE}}
@@ -67,7 +67,7 @@ tasks:
         - internal/testing
         - internal/model
         - internal/store/sqlite
-        - beaulieu/tasks$
+        - .
         - scripts
       PKGS:
         sh: go run ./scripts/pkgs {{join " " .EXCLUDE}}
