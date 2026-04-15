@@ -71,3 +71,65 @@ func TestUsers_GetByID(t *testing.T) {
 		}
 	})
 }
+
+func TestUsers_Update(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+
+	t.Run("updates name and email", func(t *testing.T) {
+		u := seed.User(t, store, "u1", "Alice", "alice@example.com")
+		u.Name = "Alicia"
+		u.Email = "alicia@example.com"
+		if err := store.Users.Update(ctx, u); err != nil {
+			t.Fatalf("Update: %v", err)
+		}
+		got, err := store.Users.GetByID(ctx, "u1")
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if got.Name != "Alicia" {
+			t.Errorf("Name = %q, want %q", got.Name, "Alicia")
+		}
+		if got.Email != "alicia@example.com" {
+			t.Errorf("Email = %q, want %q", got.Email, "alicia@example.com")
+		}
+	})
+
+	t.Run("unknown ID returns ErrNotFound", func(t *testing.T) {
+		u := seed.User(t, store, "u2", "Bob", "bob@example.com")
+		u.ID = "does-not-exist"
+		if err := store.Users.Update(ctx, u); err != repo.ErrNotFound {
+			t.Errorf("err = %v, want repo.ErrNotFound", err)
+		}
+	})
+
+	t.Run("duplicate email returns ErrConflict", func(t *testing.T) {
+		seed.User(t, store, "u3", "Carol", "carol@example.com")
+		u := seed.User(t, store, "u4", "Dave", "dave@example.com")
+		u.Email = "carol@example.com"
+		if err := store.Users.Update(ctx, u); err != repo.ErrConflict {
+			t.Errorf("err = %v, want repo.ErrConflict", err)
+		}
+	})
+}
+
+func TestUsers_Delete(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+
+	t.Run("deletes existing user", func(t *testing.T) {
+		seed.User(t, store, "u1", "Alice", "alice@example.com")
+		if err := store.Users.Delete(ctx, "u1"); err != nil {
+			t.Fatalf("Delete: %v", err)
+		}
+		if _, err := store.Users.GetByID(ctx, "u1"); err != repo.ErrNotFound {
+			t.Errorf("after delete: err = %v, want ErrNotFound", err)
+		}
+	})
+
+	t.Run("unknown ID returns ErrNotFound", func(t *testing.T) {
+		if err := store.Users.Delete(ctx, "does-not-exist"); err != repo.ErrNotFound {
+			t.Errorf("err = %v, want repo.ErrNotFound", err)
+		}
+	})
+}

@@ -20,3 +20,11 @@ func (m *UserRepo) GetByID(_ context.Context, _ string) (*model.User, error) {
 func (m *UserRepo) Create(_ context.Context, _, _, _ string) (*model.User, error) {
 	return m.User, m.Err
 }
+
+func (m *UserRepo) Update(_ context.Context, _ *model.User) error {
+	return m.Err
+}
+
+func (m *UserRepo) Delete(_ context.Context, _ string) error {
+	return m.Err
+}

@@ -36,6 +36,50 @@ func (s *userStore) Create(ctx context.Context, id, name, email string) (*model.
 	return s.GetByID(ctx, id)
 }
 
+// Update replaces the name and email of an existing user.
+// Returns repo.ErrNotFound if no user with that ID exists.
+// Returns repo.ErrConflict if the new email is already taken.
+func (s *userStore) Update(ctx context.Context, u *model.User) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE users SET name = ?, email = ? WHERE id = ?`,
+		u.Name, u.Email, u.ID)
+	if err != nil {
+		if isUniqueConstraint(err) {
+			return repo.ErrConflict
+		}
+		return fmt.Errorf("update user: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if n == 0 {
+		return repo.ErrNotFound
+	}
+	return nil
+}
+
+// Delete removes a user by ID.
+// Returns repo.ErrNotFound if no user with that ID exists.
+// Returns repo.ErrConflict if the user still owns projects or tasks (FK RESTRICT).
+func (s *userStore) Delete(ctx context.Context, id string) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, id)
+	if err != nil {
+		if isForeignKeyConstraint(err) {
+			return repo.ErrConflict
+		}
+		return fmt.Errorf("delete user: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if n == 0 {
+		return repo.ErrNotFound
+	}
+	return nil
+}
+
 func scanUser(row *sql.Row) (*model.User, error) {
 	var u model.User
 	err := row.Scan(&u.ID, &u.Name, &u.Email, &u.CreatedAt)

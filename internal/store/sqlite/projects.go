@@ -349,3 +349,8 @@ func scanProject(rows *sql.Rows) (*model.Project, error) {
 func isUniqueConstraint(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
 }
+
+// isForeignKeyConstraint reports whether err is a SQLite FOREIGN KEY constraint violation.
+func isForeignKeyConstraint(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "FOREIGN KEY constraint failed")
+}
