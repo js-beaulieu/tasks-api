@@ -21,14 +21,16 @@ func (s *userStore) GetByID(ctx context.Context, id string) (*model.User, error)
 	return scanUser(row)
 }
 
-// GetOrCreate inserts a user if no row with the given ID exists, then returns
-// the stored record. The operation is idempotent: a second call with the same
-// ID returns the original row unchanged.
-func (s *userStore) GetOrCreate(ctx context.Context, id, name, email string) (*model.User, error) {
+// Create inserts a new user. Returns repo.ErrConflict if a user with the same
+// ID already exists.
+func (s *userStore) Create(ctx context.Context, id, name, email string) (*model.User, error) {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT OR IGNORE INTO users (id, name, email) VALUES (?, ?, ?)`,
+		`INSERT INTO users (id, name, email) VALUES (?, ?, ?)`,
 		id, name, email)
 	if err != nil {
+		if isUniqueConstraint(err) {
+			return nil, repo.ErrConflict
+		}
 		return nil, fmt.Errorf("insert user: %w", err)
 	}
 	return s.GetByID(ctx, id)

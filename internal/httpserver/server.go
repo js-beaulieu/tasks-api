@@ -16,12 +16,20 @@ import (
 
 func New(store *sqlite.Store) http.Handler {
 	r := chi.NewRouter()
-	r.Use(middleware.AuthMiddleware(store.Users))
-	r.Get("/health", healthHandler)
-	r.Mount("/users", users.NewRouter(store.Users))
-	r.Mount("/projects", projects.NewRouter(store.Projects, store.Tasks))
-	r.Mount("/tasks", taskhandler.NewRouter(store.Projects, store.Tasks, store.Tags))
-	r.Mount("/tags", taghandler.NewRouter(store.Tags))
+
+	// Unauthenticated: user does not need to exist yet.
+	r.Post("/login", users.LoginHandler(store.Users))
+
+	// Authenticated: all routes below require a known user.
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.AuthMiddleware(store.Users))
+		r.Get("/health", healthHandler)
+		r.Mount("/users", users.NewRouter(store.Users))
+		r.Mount("/projects", projects.NewRouter(store.Projects, store.Tasks))
+		r.Mount("/tasks", taskhandler.NewRouter(store.Projects, store.Tasks, store.Tags))
+		r.Mount("/tags", taghandler.NewRouter(store.Tags))
+	})
+
 	return r
 }
 

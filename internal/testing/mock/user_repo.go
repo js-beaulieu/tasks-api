@@ -17,6 +17,6 @@ func (m *UserRepo) GetByID(_ context.Context, _ string) (*model.User, error) {
 	return m.User, m.Err
 }
 
-func (m *UserRepo) GetOrCreate(_ context.Context, _, _, _ string) (*model.User, error) {
+func (m *UserRepo) Create(_ context.Context, _, _, _ string) (*model.User, error) {
 	return m.User, m.Err
 }

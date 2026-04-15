@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/js-beaulieu/tasks/internal/httpserver/render"
@@ -13,9 +14,9 @@ type ctxKey struct{}
 
 var userCtxKey = ctxKey{}
 
-// AuthMiddleware reads X-User-ID (required), X-User-Name, and X-User-Email headers.
-// Calls UserRepo.GetOrCreate and injects *model.User into the request context.
-// Returns 401 JSON if X-User-ID is absent.
+// AuthMiddleware reads the X-User-ID header and looks up the user by ID.
+// Returns 401 if the header is absent or no matching user exists.
+// Users are never created implicitly — use POST /login for first-time registration.
 func AuthMiddleware(users repo.UserRepo) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -25,11 +26,12 @@ func AuthMiddleware(users repo.UserRepo) func(http.Handler) http.Handler {
 				return
 			}
 
-			name := r.Header.Get("X-User-Name")
-			email := r.Header.Get("X-User-Email")
-
-			u, err := users.GetOrCreate(r.Context(), id, name, email)
+			u, err := users.GetByID(r.Context(), id)
 			if err != nil {
+				if errors.Is(err, repo.ErrNotFound) {
+					render.Error(w, http.StatusUnauthorized, "unauthorized")
+					return
+				}
 				render.Error(w, http.StatusInternalServerError, "internal error")
 				return
 			}

@@ -8,16 +8,17 @@ import (
 
 	"github.com/js-beaulieu/tasks/internal/repo"
 	testdb "github.com/js-beaulieu/tasks/internal/testing/db"
+	"github.com/js-beaulieu/tasks/internal/testing/seed"
 )
 
-func TestUsers_GetOrCreate(t *testing.T) {
+func TestUsers_Create(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
 
 	t.Run("creates a new user", func(t *testing.T) {
-		u, err := store.Users.GetOrCreate(ctx, "user-1", "Alice", "alice@example.com")
+		u, err := store.Users.Create(ctx, "user-1", "Alice", "alice@example.com")
 		if err != nil {
-			t.Fatalf("GetOrCreate: %v", err)
+			t.Fatalf("Create: %v", err)
 		}
 		if u.ID != "user-1" {
 			t.Errorf("ID = %q, want %q", u.ID, "user-1")
@@ -33,20 +34,14 @@ func TestUsers_GetOrCreate(t *testing.T) {
 		}
 	})
 
-	t.Run("idempotent on same ID", func(t *testing.T) {
-		first, err := store.Users.GetOrCreate(ctx, "user-2", "Bob", "bob@example.com")
+	t.Run("duplicate ID returns ErrConflict", func(t *testing.T) {
+		_, err := store.Users.Create(ctx, "user-2", "Bob", "bob@example.com")
 		if err != nil {
-			t.Fatalf("first GetOrCreate: %v", err)
+			t.Fatalf("first Create: %v", err)
 		}
-		second, err := store.Users.GetOrCreate(ctx, "user-2", "Bobby", "bobby@example.com")
-		if err != nil {
-			t.Fatalf("second GetOrCreate: %v", err)
-		}
-		if first.ID != second.ID {
-			t.Errorf("IDs differ: %q vs %q", first.ID, second.ID)
-		}
-		if second.Name != "Bob" {
-			t.Errorf("Name changed to %q, want original %q", second.Name, "Bob")
+		_, err = store.Users.Create(ctx, "user-2", "Bobby", "bobby@example.com")
+		if err != repo.ErrConflict {
+			t.Errorf("duplicate Create: err = %v, want repo.ErrConflict", err)
 		}
 	})
 }
@@ -56,10 +51,7 @@ func TestUsers_GetByID(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("existing user", func(t *testing.T) {
-		_, err := store.Users.GetOrCreate(ctx, "user-3", "Carol", "carol@example.com")
-		if err != nil {
-			t.Fatalf("GetOrCreate: %v", err)
-		}
+		seed.User(t, store, "user-3", "Carol", "carol@example.com")
 		u, err := store.Users.GetByID(ctx, "user-3")
 		if err != nil {
 			t.Fatalf("GetByID: %v", err)

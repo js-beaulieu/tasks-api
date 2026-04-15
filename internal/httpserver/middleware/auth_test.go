@@ -9,6 +9,7 @@ import (
 
 	"github.com/js-beaulieu/tasks/internal/httpserver/middleware"
 	"github.com/js-beaulieu/tasks/internal/model"
+	repoerr "github.com/js-beaulieu/tasks/internal/repo"
 	"github.com/js-beaulieu/tasks/internal/testing/mock"
 )
 
@@ -31,7 +32,20 @@ func TestAuthMiddleware(t *testing.T) {
 		}
 	})
 
-	t.Run("GetOrCreate error returns 500", func(t *testing.T) {
+	t.Run("unknown user returns 401", func(t *testing.T) {
+		repo := &mock.UserRepo{Err: repoerr.ErrNotFound}
+		handler := middleware.AuthMiddleware(repo)(okNext)
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("X-User-ID", "user-1")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("status = %d, want 401", w.Code)
+		}
+	})
+
+	t.Run("lookup error returns 500", func(t *testing.T) {
 		repo := &mock.UserRepo{Err: errors.New("db error")}
 		handler := middleware.AuthMiddleware(repo)(okNext)
 		req := httptest.NewRequest(http.MethodGet, "/", nil)

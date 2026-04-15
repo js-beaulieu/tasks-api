@@ -13,7 +13,7 @@ var ErrConflict = errors.New("conflict")
 
 type UserRepo interface {
 	GetByID(ctx context.Context, id string) (*model.User, error)
-	GetOrCreate(ctx context.Context, id, name, email string) (*model.User, error)
+	Create(ctx context.Context, id, name, email string) (*model.User, error)
 }
 
 type ProjectRepo interface {
