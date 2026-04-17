@@ -174,7 +174,7 @@ func TestUpdateTaskHandlerErrors(t *testing.T) {
 				return nil, errors.New("db error")
 			},
 		}
-		handler := UpdateTaskHandler(modifyPR, tr)
+		handler := UpdateTaskHandler(modifyPR, tr, &mock.TagRepo{})
 		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{UserID: "u1", TaskID: "t1"})
 		if err == nil {
 			t.Fatal("expected error")
@@ -189,7 +189,7 @@ func TestUpdateTaskHandlerErrors(t *testing.T) {
 			},
 			UpdateFn: func(_ context.Context, _ *model.Task) error { return errors.New("db error") },
 		}
-		handler := UpdateTaskHandler(modifyPR, tr)
+		handler := UpdateTaskHandler(modifyPR, tr, &mock.TagRepo{})
 		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{UserID: "u1", TaskID: "t1", Name: &newName})
 		if err == nil {
 			t.Fatal("expected error")
@@ -363,8 +363,11 @@ func TestUpdateTaskHandler(t *testing.T) {
 				return nil
 			},
 		}
+		tagRepo := &mock.TagRepo{
+			ListForTaskFn: func(_ context.Context, _ string) ([]string, error) { return nil, nil },
+		}
 		pos := 3
-		handler := UpdateTaskHandler(modifyPR, tr)
+		handler := UpdateTaskHandler(modifyPR, tr, tagRepo)
 		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{
 			UserID:   "u1",
 			TaskID:   "t1",
@@ -379,7 +382,7 @@ func TestUpdateTaskHandler(t *testing.T) {
 	})
 
 	t.Run("missing task_id returns error", func(t *testing.T) {
-		handler := UpdateTaskHandler(&mock.ProjectRepo{}, &mock.TaskRepo{})
+		handler := UpdateTaskHandler(&mock.ProjectRepo{}, &mock.TaskRepo{}, &mock.TagRepo{})
 		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{})
 		if err == nil {
 			t.Fatal("expected error for missing task_id")
@@ -460,7 +463,7 @@ func TestUpdateTaskAccessControl(t *testing.T) {
 			},
 		}
 		newName := "X"
-		handler := UpdateTaskHandler(pr, tr)
+		handler := UpdateTaskHandler(pr, tr, &mock.TagRepo{})
 		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{
 			UserID: "u1", TaskID: "t1", Name: &newName,
 		})
@@ -488,8 +491,11 @@ func TestUpdateTaskAccessControl(t *testing.T) {
 				return model.RoleModify, nil
 			},
 		}
+		tagRepo := &mock.TagRepo{
+			ListForTaskFn: func(_ context.Context, _ string) ([]string, error) { return nil, nil },
+		}
 		newName := "X"
-		handler := UpdateTaskHandler(pr, tr)
+		handler := UpdateTaskHandler(pr, tr, tagRepo)
 		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{
 			UserID: "u1", TaskID: "t1", Name: &newName,
 		})
@@ -516,7 +522,7 @@ func TestUpdateTaskAccessControl(t *testing.T) {
 			},
 		}
 		targetProject := "p2"
-		handler := UpdateTaskHandler(pr, tr)
+		handler := UpdateTaskHandler(pr, tr, &mock.TagRepo{})
 		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{
 			UserID: "u1", TaskID: "t1", ProjectID: &targetProject,
 		})
@@ -541,8 +547,11 @@ func TestUpdateTaskAccessControl(t *testing.T) {
 				return model.RoleModify, nil
 			},
 		}
+		tagRepo := &mock.TagRepo{
+			ListForTaskFn: func(_ context.Context, _ string) ([]string, error) { return nil, nil },
+		}
 		targetProject := "p2"
-		handler := UpdateTaskHandler(pr, tr)
+		handler := UpdateTaskHandler(pr, tr, tagRepo)
 		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{
 			UserID: "u1", TaskID: "t1", ProjectID: &targetProject,
 		})

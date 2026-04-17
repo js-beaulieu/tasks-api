@@ -143,19 +143,26 @@ var UpdateTaskTool = &mcp.Tool{
 }
 
 type updateTaskInput struct {
-	UserID      string  `json:"user_id"`
-	TaskID      string  `json:"task_id"`
-	ProjectID   *string `json:"project_id,omitempty"`
-	Name        *string `json:"name,omitempty"`
-	Description *string `json:"description,omitempty"`
-	Status      *string `json:"status,omitempty"`
-	DueDate     *string `json:"due_date,omitempty"`
-	AssigneeID  *string `json:"assignee_id,omitempty"`
-	Position    *int    `json:"position,omitempty"`
+	UserID      string   `json:"user_id"`
+	TaskID      string   `json:"task_id"`
+	ProjectID   *string  `json:"project_id,omitempty"`
+	Name        *string  `json:"name,omitempty"`
+	Description *string  `json:"description,omitempty"`
+	Status      *string  `json:"status,omitempty"`
+	DueDate     *string  `json:"due_date,omitempty"`
+	AssigneeID  *string  `json:"assignee_id,omitempty"`
+	Position    *int     `json:"position,omitempty"`
+	AddTags     []string `json:"add_tags,omitempty"    jsonschema:"tags to add; processed before remove_tags, so a tag present in both ends up removed"`
+	RemoveTags  []string `json:"remove_tags,omitempty" jsonschema:"tags to remove; processed after add_tags, so a tag present in both ends up removed"`
 }
 
-func UpdateTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo) mcp.ToolHandlerFor[updateTaskInput, *model.Task] {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, in updateTaskInput) (*mcp.CallToolResult, *model.Task, error) {
+type updateTaskResult struct {
+	*model.Task
+	Tags []string `json:"tags"`
+}
+
+func UpdateTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo, tagsRepo repo.TagRepo) mcp.ToolHandlerFor[updateTaskInput, *updateTaskResult] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in updateTaskInput) (*mcp.CallToolResult, *updateTaskResult, error) {
 		if in.UserID == "" || in.TaskID == "" {
 			return nil, nil, errors.New("user_id and task_id are required")
 		}
@@ -197,7 +204,21 @@ func UpdateTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo) mcp.T
 		if err := tasks.Update(ctx, t); err != nil {
 			return nil, nil, err
 		}
-		return nil, t, nil
+		for _, tag := range in.AddTags {
+			if err := tagsRepo.Add(ctx, t.ID, tag); err != nil {
+				return nil, nil, err
+			}
+		}
+		for _, tag := range in.RemoveTags {
+			if err := tagsRepo.Delete(ctx, t.ID, tag); err != nil {
+				return nil, nil, err
+			}
+		}
+		tags, err := tagsRepo.ListForTask(ctx, t.ID)
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, &updateTaskResult{Task: t, Tags: tags}, nil
 	}
 }
 
