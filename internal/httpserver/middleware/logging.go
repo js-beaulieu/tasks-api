@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -72,7 +73,8 @@ func Logging(cfg config.Config) func(http.Handler) http.Handler {
 			start := time.Now()
 			next.ServeHTTP(rw, r.WithContext(ctx))
 
-			if isSSE {
+			responseIsSSE := isSSE || strings.HasPrefix(rw.Header().Get("Content-Type"), "text/event-stream")
+			if responseIsSSE {
 				log.InfoContext(ctx, "← SSE stream closed", "duration_ms", time.Since(start).Milliseconds())
 			} else {
 				log.InfoContext(ctx, "← response",
