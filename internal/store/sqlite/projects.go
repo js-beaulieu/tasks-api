@@ -209,6 +209,7 @@ func (s *projectStore) GetMemberRole(ctx context.Context, projectID, userID stri
 
 // ListMembers returns all explicit members of a project.
 func (s *projectStore) ListMembers(ctx context.Context, projectID string) ([]*model.ProjectMember, error) {
+	logger.FromCtx(ctx).Debug("listing members", "project_id", projectID)
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT project_id, user_id, role FROM project_members WHERE project_id = ?`,
 		projectID,
@@ -226,11 +227,13 @@ func (s *projectStore) ListMembers(ctx context.Context, projectID string) ([]*mo
 		}
 		members = append(members, &m)
 	}
+	logger.FromCtx(ctx).Debug("listed members", "project_id", projectID, "count", len(members))
 	return members, rows.Err()
 }
 
 // AddMember adds a user to a project. Returns repo.ErrConflict on duplicate.
 func (s *projectStore) AddMember(ctx context.Context, m *model.ProjectMember) error {
+	logger.FromCtx(ctx).Debug("adding member", "project_id", m.ProjectID, "user_id", m.UserID, "role", m.Role)
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO project_members (project_id, user_id, role) VALUES (?, ?, ?)`,
 		m.ProjectID, m.UserID, m.Role,
@@ -241,11 +244,13 @@ func (s *projectStore) AddMember(ctx context.Context, m *model.ProjectMember) er
 		}
 		return fmt.Errorf("add member: %w", err)
 	}
+	logger.FromCtx(ctx).Debug("added member", "project_id", m.ProjectID, "user_id", m.UserID)
 	return nil
 }
 
 // UpdateMemberRole changes a member's role.
 func (s *projectStore) UpdateMemberRole(ctx context.Context, projectID, userID, role string) error {
+	logger.FromCtx(ctx).Debug("updating member role", "project_id", projectID, "user_id", userID, "role", role)
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE project_members SET role = ? WHERE project_id = ? AND user_id = ?`,
 		role, projectID, userID,
@@ -253,11 +258,13 @@ func (s *projectStore) UpdateMemberRole(ctx context.Context, projectID, userID, 
 	if err != nil {
 		return fmt.Errorf("update member role: %w", err)
 	}
+	logger.FromCtx(ctx).Debug("updated member role", "project_id", projectID, "user_id", userID)
 	return nil
 }
 
 // RemoveMember removes a user from a project.
 func (s *projectStore) RemoveMember(ctx context.Context, projectID, userID string) error {
+	logger.FromCtx(ctx).Debug("removing member", "project_id", projectID, "user_id", userID)
 	_, err := s.db.ExecContext(ctx,
 		`DELETE FROM project_members WHERE project_id = ? AND user_id = ?`,
 		projectID, userID,
@@ -265,11 +272,13 @@ func (s *projectStore) RemoveMember(ctx context.Context, projectID, userID strin
 	if err != nil {
 		return fmt.Errorf("remove member: %w", err)
 	}
+	logger.FromCtx(ctx).Debug("removed member", "project_id", projectID, "user_id", userID)
 	return nil
 }
 
 // ListStatuses returns project statuses ordered by position.
 func (s *projectStore) ListStatuses(ctx context.Context, projectID string) ([]*model.ProjectStatus, error) {
+	logger.FromCtx(ctx).Debug("listing statuses", "project_id", projectID)
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT project_id, status, position FROM project_statuses
 		 WHERE project_id = ? ORDER BY position`,
@@ -288,12 +297,14 @@ func (s *projectStore) ListStatuses(ctx context.Context, projectID string) ([]*m
 		}
 		statuses = append(statuses, &ps)
 	}
+	logger.FromCtx(ctx).Debug("listed statuses", "project_id", projectID, "count", len(statuses))
 	return statuses, rows.Err()
 }
 
 // AddStatus appends a new status at the end of the project's status list.
 // The position is computed inside a tx to avoid races.
 func (s *projectStore) AddStatus(ctx context.Context, projectID, status string) error {
+	logger.FromCtx(ctx).Debug("adding status", "project_id", projectID, "status", status)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -317,12 +328,17 @@ func (s *projectStore) AddStatus(ctx context.Context, projectID, status string) 
 		return fmt.Errorf("insert status: %w", err)
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	logger.FromCtx(ctx).Debug("added status", "project_id", projectID, "status", status)
+	return nil
 }
 
 // DeleteStatus removes a status from a project.
 // Returns repo.ErrConflict if any tasks currently use that status.
 func (s *projectStore) DeleteStatus(ctx context.Context, projectID, status string) error {
+	logger.FromCtx(ctx).Debug("deleting status", "project_id", projectID, "status", status)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -349,7 +365,11 @@ func (s *projectStore) DeleteStatus(ctx context.Context, projectID, status strin
 		return fmt.Errorf("delete status: %w", err)
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	logger.FromCtx(ctx).Debug("deleted status", "project_id", projectID, "status", status)
+	return nil
 }
 
 // scanProject reads a project row from a *sql.Rows scanner.
