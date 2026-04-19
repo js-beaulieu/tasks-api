@@ -22,6 +22,9 @@ func (s *userStore) GetByID(ctx context.Context, id string) (*model.User, error)
 		`SELECT id, name, email, created_at FROM users WHERE id = ?`, id)
 	u, err := scanUser(row)
 	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			logger.FromCtx(ctx).Debug("user not found", "id", id)
+		}
 		return nil, err
 	}
 	logger.FromCtx(ctx).Debug("got user", "id", id)
