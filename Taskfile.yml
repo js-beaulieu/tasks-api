@@ -19,6 +19,20 @@ tasks:
     cmds:
       - go tool air
 
+  docker:build:
+    desc: Build the Docker image
+    vars:
+      TAG: '{{default "tasks:latest" .TAG}}'
+    cmds:
+      - docker build -t {{.TAG}} .
+
+  docker:run:
+    desc: Run the Docker image (--rm, port 8080)
+    vars:
+      TAG: '{{default "tasks:latest" .TAG}}'
+    cmds:
+      - docker run --rm -p 8080:8080 -v "$(pwd)/tasks.db:/tasks.db" {{.TAG}}
+
   format:
     desc: Format all Go source files
     cmds:
