@@ -5,8 +5,11 @@ go 1.26.2
 require (
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/google/uuid v1.6.0
+	github.com/joho/godotenv v1.5.1
+	github.com/lmittmann/tint v1.1.3
 	github.com/modelcontextprotocol/go-sdk v1.5.0
 	github.com/pressly/goose/v3 v3.27.0
+	github.com/teambition/rrule-go v1.8.2
 	modernc.org/sqlite v1.48.2
 )
 
@@ -122,7 +125,6 @@ require (
 	github.com/jgautheron/goconst v1.8.2 // indirect
 	github.com/jingyugao/rowserrcheck v1.1.1 // indirect
 	github.com/jjti/go-spancheck v0.6.5 // indirect
-	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/julz/importas v0.2.0 // indirect
 	github.com/karamaru-alpha/copyloopvar v1.2.2 // indirect
 	github.com/kisielk/errcheck v1.10.0 // indirect
@@ -202,7 +204,6 @@ require (
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/subosito/gotenv v1.4.1 // indirect
 	github.com/tdewolff/parse/v2 v2.8.3 // indirect
-	github.com/teambition/rrule-go v1.8.2 // indirect
 	github.com/tetafro/godot v1.5.4 // indirect
 	github.com/timakin/bodyclose v0.0.0-20241222091800-1db5c5ca4d67 // indirect
 	github.com/timonwong/loggercheck v0.11.0 // indirect

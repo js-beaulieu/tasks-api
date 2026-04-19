@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/joho/godotenv"
+	"github.com/lmittmann/tint"
 
 	"github.com/js-beaulieu/tasks/internal/httpserver"
 	"github.com/js-beaulieu/tasks/internal/mcpserver"
@@ -12,6 +14,8 @@ import (
 )
 
 func main() {
+	godotenv.Load() // Load environment variables from .env file
+
 	db, err := sqlite.Open("tasks.db")
 	if err != nil {
 		log.Fatal(err)
