@@ -58,21 +58,21 @@ func healthHandler(_ context.Context, _ *mcp.CallToolRequest, _ any) (*mcp.CallT
 
 func withLogging[I, O any](name string, cfg config.Config, h mcp.ToolHandlerFor[I, O]) mcp.ToolHandlerFor[I, O] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, in I) (*mcp.CallToolResult, O, error) {
-		log := logger.FromCtx(ctx).With("tool", name)
+		log := logger.FromCtx(ctx)
 		if cfg.LogDetailed {
-			log.DebugContext(ctx, "→ tool call", "input", in)
+			log.InfoContext(ctx, "→ tool call", "tool", name, "input", in)
 		} else {
-			log.DebugContext(ctx, "→ tool call")
+			log.InfoContext(ctx, "→ tool call", "tool", name)
 		}
 		start := time.Now()
 		result, out, err := h(ctx, req, in)
 		duration := time.Since(start)
 		if err != nil {
-			log.ErrorContext(ctx, "tool error", "err", err, "duration_ms", duration.Milliseconds())
+			log.ErrorContext(ctx, "tool error", "tool", name, "err", err, "duration_ms", duration.Milliseconds())
 		} else if cfg.LogDetailed {
-			log.InfoContext(ctx, "← tool result", "output", out, "duration_ms", duration.Milliseconds())
+			log.InfoContext(ctx, "← tool result", "tool", name, "output", out, "duration_ms", duration.Milliseconds())
 		} else {
-			log.InfoContext(ctx, "← tool result", "duration_ms", duration.Milliseconds())
+			log.InfoContext(ctx, "← tool result", "tool", name, "duration_ms", duration.Milliseconds())
 		}
 		return result, out, err
 	}
