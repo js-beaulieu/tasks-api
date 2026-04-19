@@ -2,7 +2,6 @@ package mcpserver
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"time"
 
@@ -63,7 +62,7 @@ func withLogging[I, O any](name string, cfg config.Config, h mcp.ToolHandlerFor[
 		log := logger.FromCtx(ctx).With("invocation_id", uuid.New().String(), "tool", name)
 		ctx = logger.IntoCtx(ctx, log)
 		if cfg.LogDetailed {
-			log.InfoContext(ctx, "→ tool call", "body", logJSON{in})
+			log.InfoContext(ctx, "→ tool call", logger.Group("body", in))
 		} else {
 			log.InfoContext(ctx, "→ tool call")
 		}
@@ -73,21 +72,10 @@ func withLogging[I, O any](name string, cfg config.Config, h mcp.ToolHandlerFor[
 		if err != nil {
 			log.ErrorContext(ctx, "tool error", "err", err, "duration_ms", duration.Milliseconds())
 		} else if cfg.LogDetailed {
-			log.InfoContext(ctx, "← tool result", "body", logJSON{out}, "duration_ms", duration.Milliseconds())
+			log.InfoContext(ctx, "← tool result", logger.Group("body", out), "duration_ms", duration.Milliseconds())
 		} else {
 			log.InfoContext(ctx, "← tool result", "duration_ms", duration.Milliseconds())
 		}
 		return result, out, err
 	}
-}
-
-type logJSON struct{ v any }
-
-func (j logJSON) MarshalJSON() ([]byte, error) { return json.Marshal(j.v) }
-func (j logJSON) String() string {
-	b, err := json.Marshal(j.v)
-	if err != nil {
-		return "<json error>"
-	}
-	return string(b)
 }
