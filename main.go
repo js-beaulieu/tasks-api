@@ -1,30 +1,45 @@
 package main
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/joho/godotenv"
 
 	"github.com/js-beaulieu/tasks/internal/config"
 	"github.com/js-beaulieu/tasks/internal/httpserver"
+	httpmdw "github.com/js-beaulieu/tasks/internal/httpserver/middleware"
+	"github.com/js-beaulieu/tasks/internal/logger"
 	"github.com/js-beaulieu/tasks/internal/mcpserver"
 	"github.com/js-beaulieu/tasks/internal/store/sqlite"
 )
 
 func main() {
+	_ = godotenv.Load()
+
+	cfg := config.Load()
+	logger.New(cfg)
+	slog.Info("starting server", "port", cfg.Port)
+
 	db, err := sqlite.Open("tasks.db")
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("failed to open database", "err", err)
+		os.Exit(1)
 	}
 	defer db.Close()
 
-	s := sqlite.New(db)
+	store := sqlite.New(db)
 
 	r := chi.NewRouter()
-	r.Mount("/", httpserver.New(s))
-	r.Handle("/mcp", mcpserver.Handler(s, config.Config{}))
+	r.Use(httpmdw.Logging(cfg))
+	r.Mount("/", httpserver.New(store))
+	r.Handle("/mcp", mcpserver.Handler(store, cfg))
 
-	log.Println("Listening on :8080")
-	log.Fatal(http.ListenAndServe(":8080", r))
+	slog.Info("listening", "addr", ":"+cfg.Port)
+	if err := http.ListenAndServe(":"+cfg.Port, r); err != nil {
+		slog.Error("server error", "err", err)
+		os.Exit(1)
+	}
 }

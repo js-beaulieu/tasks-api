@@ -13,6 +13,7 @@ report.xml
 # Environment
 .env
 .env.*
+!.env.template
 
 # Windows
 Thumbs.db
