@@ -60,7 +60,7 @@ func withLogging[I, O any](name string, cfg config.Config, h mcp.ToolHandlerFor[
 	return func(ctx context.Context, req *mcp.CallToolRequest, in I) (*mcp.CallToolResult, O, error) {
 		log := logger.FromCtx(ctx)
 		if cfg.LogDetailed {
-			log.InfoContext(ctx, "→ tool call", "tool", name, "input", in)
+			log.InfoContext(ctx, "→ tool call", "tool", name, "body", in)
 		} else {
 			log.InfoContext(ctx, "→ tool call", "tool", name)
 		}
@@ -70,7 +70,7 @@ func withLogging[I, O any](name string, cfg config.Config, h mcp.ToolHandlerFor[
 		if err != nil {
 			log.ErrorContext(ctx, "tool error", "tool", name, "err", err, "duration_ms", duration.Milliseconds())
 		} else if cfg.LogDetailed {
-			log.InfoContext(ctx, "← tool result", "tool", name, "output", out, "duration_ms", duration.Milliseconds())
+			log.InfoContext(ctx, "← tool result", "tool", name, "body", out, "duration_ms", duration.Milliseconds())
 		} else {
 			log.InfoContext(ctx, "← tool result", "tool", name, "duration_ms", duration.Milliseconds())
 		}
