@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/js-beaulieu/tasks/internal/logger"
 	"github.com/js-beaulieu/tasks/internal/model"
 	"github.com/js-beaulieu/tasks/internal/repo"
 )
@@ -17,6 +18,7 @@ type projectStore struct{ db *sql.DB }
 
 // List returns all projects where userID is the owner or an explicit member.
 func (s *projectStore) List(ctx context.Context, userID string) ([]*model.Project, error) {
+	logger.FromCtx(ctx).Debug("listing projects", "user_id", userID)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT DISTINCT p.id, p.name, p.description, p.due_date,
 		                p.owner_id, p.assignee_id, p.created_at, p.updated_at
@@ -39,11 +41,13 @@ func (s *projectStore) List(ctx context.Context, userID string) ([]*model.Projec
 		}
 		projects = append(projects, p)
 	}
+	logger.FromCtx(ctx).Debug("listed projects", "user_id", userID, "count", len(projects))
 	return projects, rows.Err()
 }
 
 // Get fetches a single project by ID. Returns repo.ErrNotFound if absent.
 func (s *projectStore) Get(ctx context.Context, id string) (*model.Project, error) {
+	logger.FromCtx(ctx).Debug("getting project", "id", id)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, name, description, due_date,
 		       owner_id, assignee_id, created_at, updated_at
@@ -57,8 +61,10 @@ func (s *projectStore) Get(ctx context.Context, id string) (*model.Project, erro
 		if err := rows.Err(); err != nil {
 			return nil, fmt.Errorf("get project: %w", err)
 		}
+		logger.FromCtx(ctx).Debug("project not found", "id", id)
 		return nil, repo.ErrNotFound
 	}
+	logger.FromCtx(ctx).Debug("got project", "id", id)
 	return scanProject(rows)
 }
 
@@ -67,6 +73,7 @@ func (s *projectStore) Get(ctx context.Context, id string) (*model.Project, erro
 // Additional statuses are appended after the defaults (positions 4, 5, …).
 // Any additional status that matches a default (case-sensitive) is silently skipped.
 func (s *projectStore) Create(ctx context.Context, p *model.Project, additionalStatuses ...string) error {
+	logger.FromCtx(ctx).Debug("creating project", "name", p.Name)
 	p.ID = uuid.New().String()
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -113,13 +120,19 @@ func (s *projectStore) Create(ctx context.Context, p *model.Project, additionalS
 		pos++
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		logger.FromCtx(ctx).Error("failed to create project", "err", err)
+		return err
+	}
+	logger.FromCtx(ctx).Debug("created project", "id", p.ID)
+	return nil
 }
 
 // Update applies changes from p to the stored project.
 // Name is always updated. Pointer fields (Description, DueDate, AssigneeID)
 // are only updated when non-nil. updated_at is always refreshed.
 func (s *projectStore) Update(ctx context.Context, p *model.Project) error {
+	logger.FromCtx(ctx).Debug("updating project", "id", p.ID)
 	setClauses := []string{"name = ?", "updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')"}
 	args := []any{p.Name}
 
@@ -143,15 +156,18 @@ func (s *projectStore) Update(ctx context.Context, p *model.Project) error {
 	if err != nil {
 		return fmt.Errorf("update project: %w", err)
 	}
+	logger.FromCtx(ctx).Debug("updated project", "id", p.ID)
 	return nil
 }
 
 // Delete removes a project by ID. Cascade handles members, statuses, and tasks.
 func (s *projectStore) Delete(ctx context.Context, id string) error {
+	logger.FromCtx(ctx).Debug("deleting project", "id", id)
 	_, err := s.db.ExecContext(ctx, `DELETE FROM projects WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("delete project: %w", err)
 	}
+	logger.FromCtx(ctx).Debug("deleted project", "id", id)
 	return nil
 }
 
@@ -159,6 +175,7 @@ func (s *projectStore) Delete(ctx context.Context, id string) error {
 // The owner always has "admin" without needing a project_members row.
 // Returns repo.ErrNoAccess if the user has no membership.
 func (s *projectStore) GetMemberRole(ctx context.Context, projectID, userID string) (string, error) {
+	logger.FromCtx(ctx).Debug("getting member role", "project_id", projectID, "user_id", userID)
 	var ownerID string
 	err := s.db.QueryRowContext(ctx,
 		`SELECT owner_id FROM projects WHERE id = ?`, projectID,
@@ -170,7 +187,9 @@ func (s *projectStore) GetMemberRole(ctx context.Context, projectID, userID stri
 		return "", fmt.Errorf("get project owner: %w", err)
 	}
 	if ownerID == userID {
-		return model.RoleAdmin, nil
+		role := model.RoleAdmin
+		logger.FromCtx(ctx).Debug("got member role", "project_id", projectID, "user_id", userID, "role", role)
+		return role, nil
 	}
 
 	var role string
@@ -184,6 +203,7 @@ func (s *projectStore) GetMemberRole(ctx context.Context, projectID, userID stri
 		}
 		return "", fmt.Errorf("get member role: %w", err)
 	}
+	logger.FromCtx(ctx).Debug("got member role", "project_id", projectID, "user_id", userID, "role", role)
 	return role, nil
 }
 

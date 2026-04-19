@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/js-beaulieu/tasks/internal/logger"
 	"github.com/js-beaulieu/tasks/internal/model"
 	"github.com/js-beaulieu/tasks/internal/repo"
 )
@@ -18,6 +19,7 @@ type taskStore struct{ db *sql.DB }
 // ListChildren returns tasks belonging to projectID with the given parentID
 // (nil → top-level tasks). Optional filters may narrow the result.
 func (s *taskStore) ListChildren(ctx context.Context, projectID string, parentID *string, f repo.TaskFilter) ([]*model.Task, error) {
+	logger.FromCtx(ctx).Debug("listing tasks", "project_id", projectID)
 	args := []any{}
 	joins := ""
 
@@ -63,11 +65,13 @@ func (s *taskStore) ListChildren(ctx context.Context, projectID string, parentID
 		}
 		tasks = append(tasks, t)
 	}
+	logger.FromCtx(ctx).Debug("listed tasks", "project_id", projectID, "count", len(tasks))
 	return tasks, rows.Err()
 }
 
 // Get fetches a single task by ID. Returns repo.ErrNotFound if absent.
 func (s *taskStore) Get(ctx context.Context, id string) (*model.Task, error) {
+	logger.FromCtx(ctx).Debug("getting task", "id", id)
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, project_id, parent_id, name, description,
 		        status, due_date, owner_id, assignee_id, position, recurrence, created_at, updated_at
@@ -81,8 +85,10 @@ func (s *taskStore) Get(ctx context.Context, id string) (*model.Task, error) {
 		if err := rows.Err(); err != nil {
 			return nil, fmt.Errorf("get task: %w", err)
 		}
+		logger.FromCtx(ctx).Debug("task not found", "id", id)
 		return nil, repo.ErrNotFound
 	}
+	logger.FromCtx(ctx).Debug("got task", "id", id)
 	return scanTask(rows)
 }
 
@@ -90,6 +96,7 @@ func (s *taskStore) Get(ctx context.Context, id string) (*model.Task, error) {
 // The task's ID is always overwritten with a new UUID.
 // Status is validated against project_statuses; position is auto-assigned.
 func (s *taskStore) Create(ctx context.Context, t *model.Task) error {
+	logger.FromCtx(ctx).Debug("creating task", "project_id", t.ProjectID, "name", t.Name)
 	t.ID = uuid.New().String()
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -128,12 +135,18 @@ func (s *taskStore) Create(ctx context.Context, t *model.Task) error {
 		return fmt.Errorf("insert task: %w", err)
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		logger.FromCtx(ctx).Error("failed to create task", "err", err)
+		return err
+	}
+	logger.FromCtx(ctx).Debug("created task", "id", t.ID)
+	return nil
 }
 
 // Update applies all fields from t to the stored task in a single transaction.
 // Handles status validation, position reordering, and cross-parent/project moves.
 func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
+	logger.FromCtx(ctx).Debug("updating task", "id", t.ID)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -275,12 +288,18 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 		return fmt.Errorf("update task: %w", err)
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		logger.FromCtx(ctx).Error("failed to update task", "err", err)
+		return err
+	}
+	logger.FromCtx(ctx).Debug("updated task", "id", t.ID)
+	return nil
 }
 
 // CompleteTask marks the task as done and, if it is recurring with a due_date,
 // creates and returns the next occurrence. All changes happen in one transaction.
 func (s *taskStore) CompleteTask(ctx context.Context, id, doneStatus string) (*model.Task, *model.Task, error) {
+	logger.FromCtx(ctx).Debug("completing task", "id", id, "done_status", doneStatus)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("begin tx: %w", err)
@@ -329,6 +348,7 @@ func (s *taskStore) CompleteTask(ctx context.Context, id, doneStatus string) (*m
 		if err := tx.Commit(); err != nil {
 			return nil, nil, fmt.Errorf("commit: %w", err)
 		}
+		logger.FromCtx(ctx).Debug("completed task", "id", id)
 		return task, nil, nil
 	}
 
@@ -410,15 +430,18 @@ func (s *taskStore) CompleteTask(ctx context.Context, id, doneStatus string) (*m
 		}
 	}
 
+	logger.FromCtx(ctx).Debug("completed task", "id", id)
 	return task, newTask, nil
 }
 
 // Delete removes a task by ID. The DB CASCADE removes subtasks and tags.
 func (s *taskStore) Delete(ctx context.Context, id string) error {
+	logger.FromCtx(ctx).Debug("deleting task", "id", id)
 	_, err := s.db.ExecContext(ctx, `DELETE FROM tasks WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("delete task: %w", err)
 	}
+	logger.FromCtx(ctx).Debug("deleted task", "id", id)
 	return nil
 }
 

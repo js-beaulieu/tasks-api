@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/js-beaulieu/tasks/internal/logger"
 	"github.com/js-beaulieu/tasks/internal/model"
 	"github.com/js-beaulieu/tasks/internal/repo"
 )
@@ -16,6 +17,7 @@ type userStore struct {
 
 // GetByID fetches a user by ID. Returns repo.ErrNotFound if no row exists.
 func (s *userStore) GetByID(ctx context.Context, id string) (*model.User, error) {
+	logger.FromCtx(ctx).Debug("getting user", "id", id)
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, name, email, created_at FROM users WHERE id = ?`, id)
 	return scanUser(row)
@@ -24,6 +26,7 @@ func (s *userStore) GetByID(ctx context.Context, id string) (*model.User, error)
 // Create inserts a new user. Returns repo.ErrConflict if a user with the same
 // ID already exists.
 func (s *userStore) Create(ctx context.Context, id, name, email string) (*model.User, error) {
+	logger.FromCtx(ctx).Debug("creating user", "id", id)
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO users (id, name, email) VALUES (?, ?, ?)`,
 		id, name, email)
@@ -33,6 +36,7 @@ func (s *userStore) Create(ctx context.Context, id, name, email string) (*model.
 		}
 		return nil, fmt.Errorf("insert user: %w", err)
 	}
+	logger.FromCtx(ctx).Debug("created user", "id", id)
 	return s.GetByID(ctx, id)
 }
 
@@ -40,6 +44,7 @@ func (s *userStore) Create(ctx context.Context, id, name, email string) (*model.
 // Returns repo.ErrNotFound if no user with that ID exists.
 // Returns repo.ErrConflict if the new email is already taken.
 func (s *userStore) Update(ctx context.Context, u *model.User) error {
+	logger.FromCtx(ctx).Debug("updating user", "id", u.ID)
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE users SET name = ?, email = ? WHERE id = ?`,
 		u.Name, u.Email, u.ID)
@@ -56,6 +61,7 @@ func (s *userStore) Update(ctx context.Context, u *model.User) error {
 	if n == 0 {
 		return repo.ErrNotFound
 	}
+	logger.FromCtx(ctx).Debug("updated user", "id", u.ID)
 	return nil
 }
 
@@ -63,6 +69,7 @@ func (s *userStore) Update(ctx context.Context, u *model.User) error {
 // Returns repo.ErrNotFound if no user with that ID exists.
 // Returns repo.ErrConflict if the user still owns projects or tasks (FK RESTRICT).
 func (s *userStore) Delete(ctx context.Context, id string) error {
+	logger.FromCtx(ctx).Debug("deleting user", "id", id)
 	res, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, id)
 	if err != nil {
 		if isForeignKeyConstraint(err) {
@@ -77,6 +84,7 @@ func (s *userStore) Delete(ctx context.Context, id string) error {
 	if n == 0 {
 		return repo.ErrNotFound
 	}
+	logger.FromCtx(ctx).Debug("deleted user", "id", id)
 	return nil
 }
 
