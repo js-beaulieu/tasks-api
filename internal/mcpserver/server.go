@@ -3,7 +3,6 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"time"
 
@@ -61,7 +60,7 @@ func healthHandler(_ context.Context, _ *mcp.CallToolRequest, _ any) (*mcp.CallT
 
 func withLogging[I, O any](name string, cfg config.Config, h mcp.ToolHandlerFor[I, O]) mcp.ToolHandlerFor[I, O] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, in I) (*mcp.CallToolResult, O, error) {
-		log := slog.Default().With("request_id", uuid.New().String(), "tool", name)
+		log := logger.FromCtx(ctx).With("invocation_id", uuid.New().String(), "tool", name)
 		ctx = logger.IntoCtx(ctx, log)
 		if cfg.LogDetailed {
 			log.InfoContext(ctx, "→ tool call", "body", logJSON{in})
