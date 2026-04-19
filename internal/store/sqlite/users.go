@@ -20,7 +20,12 @@ func (s *userStore) GetByID(ctx context.Context, id string) (*model.User, error)
 	logger.FromCtx(ctx).Debug("getting user", "id", id)
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, name, email, created_at FROM users WHERE id = ?`, id)
-	return scanUser(row)
+	u, err := scanUser(row)
+	if err != nil {
+		return nil, err
+	}
+	logger.FromCtx(ctx).Debug("got user", "id", id)
+	return u, nil
 }
 
 // Create inserts a new user. Returns repo.ErrConflict if a user with the same
