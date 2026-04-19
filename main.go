@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/js-beaulieu/tasks/internal/config"
 	"github.com/js-beaulieu/tasks/internal/httpserver"
 	"github.com/js-beaulieu/tasks/internal/mcpserver"
 	"github.com/js-beaulieu/tasks/internal/store/sqlite"
@@ -22,7 +23,7 @@ func main() {
 
 	r := chi.NewRouter()
 	r.Mount("/", httpserver.New(s))
-	r.Handle("/mcp", mcpserver.Handler(s))
+	r.Handle("/mcp", mcpserver.Handler(s, config.Config{}))
 
 	log.Println("Listening on :8080")
 	log.Fatal(http.ListenAndServe(":8080", r))
