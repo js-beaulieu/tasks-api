@@ -1,10 +1,13 @@
 package middleware_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/js-beaulieu/tasks/internal/httpserver/middleware"
@@ -92,20 +95,23 @@ func TestAuthMiddleware(t *testing.T) {
 		u := &model.User{ID: "user-99", Name: "Carol", Email: "carol@example.com"}
 		repo := &mock.UserRepo{User: u}
 
-		var gotLogger interface{}
+		var buf bytes.Buffer
+		base := slog.New(slog.NewTextHandler(&buf, nil))
+
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			gotLogger = logger.FromCtx(r.Context())
+			logger.FromCtx(r.Context()).Info("probe")
 			w.WriteHeader(http.StatusOK)
 		})
 
 		handler := middleware.AuthMiddleware(repo)(next)
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.Header.Set("X-User-ID", "user-99")
+		req = req.WithContext(logger.IntoCtx(req.Context(), base))
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if gotLogger == nil {
-			t.Error("expected logger in context after auth")
+		if !strings.Contains(buf.String(), "user_id=user-99") {
+			t.Errorf("expected user_id=user-99 in log output, got: %s", buf.String())
 		}
 	})
 }
