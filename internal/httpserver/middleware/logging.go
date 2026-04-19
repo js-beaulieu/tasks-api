@@ -54,7 +54,9 @@ func Logging(cfg config.Config) func(http.Handler) http.Handler {
 			)
 			ctx := logger.IntoCtx(r.Context(), log)
 
-			if cfg.LogDetailed && r.Body != nil {
+			isSSE := r.Header.Get("Accept") == "text/event-stream"
+
+			if cfg.LogDetailed && r.Body != nil && !isSSE {
 				body, _ := io.ReadAll(r.Body)
 				r.Body = io.NopCloser(bytes.NewReader(body))
 				log.DebugContext(ctx, "→ request", "body", string(body))
@@ -63,20 +65,24 @@ func Logging(cfg config.Config) func(http.Handler) http.Handler {
 			}
 
 			var respBuf *bytes.Buffer
-			if cfg.LogDetailed {
+			if cfg.LogDetailed && !isSSE {
 				respBuf = &bytes.Buffer{}
 			}
 			rw := &loggingResponseWriter{ResponseWriter: w, status: http.StatusOK, body: respBuf}
 			start := time.Now()
 			next.ServeHTTP(rw, r.WithContext(ctx))
 
-			log.InfoContext(ctx, "← response",
-				"status", rw.status,
-				"duration_ms", time.Since(start).Milliseconds(),
-				"bytes", rw.written,
-			)
-			if cfg.LogDetailed {
-				log.DebugContext(ctx, "response body", "body", respBuf.String())
+			if isSSE {
+				log.InfoContext(ctx, "← SSE stream closed", "duration_ms", time.Since(start).Milliseconds())
+			} else {
+				log.InfoContext(ctx, "← response",
+					"status", rw.status,
+					"duration_ms", time.Since(start).Milliseconds(),
+					"bytes", rw.written,
+				)
+				if cfg.LogDetailed {
+					log.DebugContext(ctx, "response body", "body", respBuf.String())
+				}
 			}
 		})
 	}

@@ -2,9 +2,12 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
+	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/js-beaulieu/tasks/internal/config"
@@ -58,22 +61,34 @@ func healthHandler(_ context.Context, _ *mcp.CallToolRequest, _ any) (*mcp.CallT
 
 func withLogging[I, O any](name string, cfg config.Config, h mcp.ToolHandlerFor[I, O]) mcp.ToolHandlerFor[I, O] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, in I) (*mcp.CallToolResult, O, error) {
-		log := logger.FromCtx(ctx)
+		log := slog.Default().With("request_id", uuid.New().String(), "tool", name)
+		ctx = logger.IntoCtx(ctx, log)
 		if cfg.LogDetailed {
-			log.InfoContext(ctx, "→ tool call", "tool", name, "body", in)
+			log.InfoContext(ctx, "→ tool call", "body", logJSON{in})
 		} else {
-			log.InfoContext(ctx, "→ tool call", "tool", name)
+			log.InfoContext(ctx, "→ tool call")
 		}
 		start := time.Now()
 		result, out, err := h(ctx, req, in)
 		duration := time.Since(start)
 		if err != nil {
-			log.ErrorContext(ctx, "tool error", "tool", name, "err", err, "duration_ms", duration.Milliseconds())
+			log.ErrorContext(ctx, "tool error", "err", err, "duration_ms", duration.Milliseconds())
 		} else if cfg.LogDetailed {
-			log.InfoContext(ctx, "← tool result", "tool", name, "body", out, "duration_ms", duration.Milliseconds())
+			log.InfoContext(ctx, "← tool result", "body", logJSON{out}, "duration_ms", duration.Milliseconds())
 		} else {
-			log.InfoContext(ctx, "← tool result", "tool", name, "duration_ms", duration.Milliseconds())
+			log.InfoContext(ctx, "← tool result", "duration_ms", duration.Milliseconds())
 		}
 		return result, out, err
 	}
+}
+
+type logJSON struct{ v any }
+
+func (j logJSON) MarshalJSON() ([]byte, error) { return json.Marshal(j.v) }
+func (j logJSON) String() string {
+	b, err := json.Marshal(j.v)
+	if err != nil {
+		return "<json error>"
+	}
+	return string(b)
 }
