@@ -72,8 +72,6 @@ func withLogging[I, O any](name string, cfg config.Config, h mcp.ToolHandlerFor[
 		duration := time.Since(start)
 		if err != nil {
 			log.ErrorContext(ctx, "tool error", "err", err, "duration_ms", duration.Milliseconds())
-		} else if cfg.LogDetailed {
-			log.InfoContext(ctx, "← tool result", slog.Group("body", slog.Any("output", out)), "duration_ms", duration.Milliseconds())
 		} else {
 			log.InfoContext(ctx, "← tool result", "duration_ms", duration.Milliseconds())
 		}
