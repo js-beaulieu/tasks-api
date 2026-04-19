@@ -57,6 +57,10 @@ func TestLoad(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("PORT", "")
+			t.Setenv("LOG_FORMAT", "")
+			t.Setenv("LOG_LEVEL", "")
+			t.Setenv("LOG_DETAILED", "")
 			for k, v := range tt.env {
 				t.Setenv(k, v)
 			}
