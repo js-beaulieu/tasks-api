@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/js-beaulieu/tasks/internal/httpserver/render"
+	"github.com/js-beaulieu/tasks/internal/logger"
 	"github.com/js-beaulieu/tasks/internal/model"
 	"github.com/js-beaulieu/tasks/internal/repo"
 )
@@ -37,6 +38,8 @@ func AuthMiddleware(users repo.UserRepo) func(http.Handler) http.Handler {
 			}
 
 			ctx := context.WithValue(r.Context(), userCtxKey, u)
+			log := logger.FromCtx(ctx).With("user_id", u.ID)
+			ctx = logger.IntoCtx(ctx, log)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

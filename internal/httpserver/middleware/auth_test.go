@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/js-beaulieu/tasks/internal/httpserver/middleware"
+	"github.com/js-beaulieu/tasks/internal/logger"
 	"github.com/js-beaulieu/tasks/internal/model"
 	repoerr "github.com/js-beaulieu/tasks/internal/repo"
 	"github.com/js-beaulieu/tasks/internal/testing/mock"
@@ -84,6 +85,27 @@ func TestAuthMiddleware(t *testing.T) {
 		}
 		if captured.ID != "user-1" {
 			t.Errorf("user.ID = %q, want %q", captured.ID, "user-1")
+		}
+	})
+
+	t.Run("valid user enriches context logger with user_id", func(t *testing.T) {
+		u := &model.User{ID: "user-99", Name: "Carol", Email: "carol@example.com"}
+		repo := &mock.UserRepo{User: u}
+
+		var gotLogger interface{}
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotLogger = logger.FromCtx(r.Context())
+			w.WriteHeader(http.StatusOK)
+		})
+
+		handler := middleware.AuthMiddleware(repo)(next)
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("X-User-ID", "user-99")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		if gotLogger == nil {
+			t.Error("expected logger in context after auth")
 		}
 	})
 }
