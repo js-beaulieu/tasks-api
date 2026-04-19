@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/js-beaulieu/tasks/internal/config"
 	"github.com/js-beaulieu/tasks/internal/httpserver/middleware"
 	"github.com/js-beaulieu/tasks/internal/logger"
@@ -34,8 +36,12 @@ func TestLogging_GeneratesRequestIDWhenAbsent(t *testing.T) {
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
-	if id := w.Header().Get("X-Request-ID"); id == "" {
+	id := w.Header().Get("X-Request-ID")
+	if id == "" {
 		t.Error("expected X-Request-ID header to be set when not provided")
+	}
+	if _, err := uuid.Parse(id); err != nil {
+		t.Errorf("X-Request-ID %q is not a valid UUID: %v", id, err)
 	}
 }
 
