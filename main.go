@@ -34,7 +34,7 @@ func main() {
 
 	r := chi.NewRouter()
 	r.Use(httpmdw.Logging(cfg))
-	r.Mount("/", httpserver.New(store))
+	r.Mount("/", httpserver.New(store, cfg))
 	r.Handle("/mcp", mcpserver.Handler(store, cfg))
 
 	slog.Info("listening", "addr", ":"+cfg.Port)
