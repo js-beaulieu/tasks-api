@@ -7,6 +7,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/js-beaulieu/tasks/internal/httpserver/middleware"
 	"github.com/js-beaulieu/tasks/internal/model"
 	"github.com/js-beaulieu/tasks/internal/repo"
 	"github.com/js-beaulieu/tasks/internal/testing/mock"
@@ -14,11 +15,14 @@ import (
 
 func strPtr(s string) *string { return &s }
 
+func userCtx() context.Context {
+	return middleware.WithUser(context.Background(), &model.User{ID: "u1", Name: "Alice", Email: "alice@example.com"})
+}
+
 func TestCompleteTaskHandler(t *testing.T) {
 	t.Run("missing task_id returns error", func(t *testing.T) {
 		handler := CompleteTaskHandler(&mock.ProjectRepo{}, &mock.TaskRepo{})
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, completeTaskInput{
-			UserID:     "u1",
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, completeTaskInput{
 			DoneStatus: "done",
 			// TaskID intentionally empty
 		})
@@ -46,8 +50,7 @@ func TestCompleteTaskHandler(t *testing.T) {
 			},
 		}
 		handler := CompleteTaskHandler(pr, tr)
-		_, output, err := handler(context.Background(), &mcp.CallToolRequest{}, completeTaskInput{
-			UserID:     "u1",
+		_, output, err := handler(userCtx(), &mcp.CallToolRequest{}, completeTaskInput{
 			TaskID:     "t1",
 			DoneStatus: "done",
 		})
@@ -77,7 +80,7 @@ func TestListTasksHandlerWithParentID(t *testing.T) {
 			},
 		}
 		handler := ListTasksHandler(tr)
-		_, output, err := handler(context.Background(), &mcp.CallToolRequest{}, listTasksInput{
+		_, output, err := handler(userCtx(), &mcp.CallToolRequest{}, listTasksInput{
 			ParentID: strPtr("parent-1"),
 		})
 		if err != nil {
@@ -95,7 +98,7 @@ func TestListTasksHandlerWithParentID(t *testing.T) {
 			},
 		}
 		handler := ListTasksHandler(tr)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, listTasksInput{ParentID: strPtr("p1")})
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, listTasksInput{ParentID: strPtr("p1")})
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -110,7 +113,7 @@ func TestGetTaskHandlerSuccess(t *testing.T) {
 			},
 		}
 		handler := GetTaskHandler(tr)
-		_, output, err := handler(context.Background(), &mcp.CallToolRequest{}, getTaskInput{TaskID: "t1"})
+		_, output, err := handler(userCtx(), &mcp.CallToolRequest{}, getTaskInput{TaskID: "t1"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -136,8 +139,8 @@ func TestCreateTaskHandlerExtra(t *testing.T) {
 			},
 		}
 		handler := CreateTaskHandler(modifyPR, tr)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, createTaskInput{
-			UserID: "u1", ProjectID: "p1", Name: "T",
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, createTaskInput{
+			ProjectID: "p1", Name: "T",
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -152,8 +155,8 @@ func TestCreateTaskHandlerExtra(t *testing.T) {
 			CreateFn: func(_ context.Context, _ *model.Task) error { return errors.New("db error") },
 		}
 		handler := CreateTaskHandler(modifyPR, tr)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, createTaskInput{
-			UserID: "u1", ProjectID: "p1", Name: "T",
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, createTaskInput{
+			ProjectID: "p1", Name: "T",
 		})
 		if err == nil {
 			t.Fatal("expected error")
@@ -175,7 +178,7 @@ func TestUpdateTaskHandlerErrors(t *testing.T) {
 			},
 		}
 		handler := UpdateTaskHandler(modifyPR, tr, &mock.TagRepo{})
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{UserID: "u1", TaskID: "t1"})
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, updateTaskInput{TaskID: "t1"})
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -190,7 +193,7 @@ func TestUpdateTaskHandlerErrors(t *testing.T) {
 			UpdateFn: func(_ context.Context, _ *model.Task) error { return errors.New("db error") },
 		}
 		handler := UpdateTaskHandler(modifyPR, tr, &mock.TagRepo{})
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{UserID: "u1", TaskID: "t1", Name: &newName})
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, updateTaskInput{TaskID: "t1", Name: &newName})
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -205,7 +208,7 @@ func TestDeleteTaskHandlerExtra(t *testing.T) {
 			},
 		}
 		handler := DeleteTaskHandler(&mock.ProjectRepo{}, tr)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, deleteTaskInput{UserID: "u1", TaskID: "t1"})
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, deleteTaskInput{TaskID: "t1"})
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -223,7 +226,7 @@ func TestDeleteTaskHandlerExtra(t *testing.T) {
 			},
 		}
 		handler := DeleteTaskHandler(pr, tr)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, deleteTaskInput{UserID: "u1", TaskID: "t1"})
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, deleteTaskInput{TaskID: "t1"})
 		if err == nil {
 			t.Fatal("expected error for read-only role")
 		}
@@ -242,7 +245,7 @@ func TestDeleteTaskHandlerExtra(t *testing.T) {
 			},
 		}
 		handler := DeleteTaskHandler(pr, tr)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, deleteTaskInput{UserID: "u1", TaskID: "t1"})
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, deleteTaskInput{TaskID: "t1"})
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -252,7 +255,7 @@ func TestDeleteTaskHandlerExtra(t *testing.T) {
 func TestListTasksHandler(t *testing.T) {
 	t.Run("both project_id and parent_id returns error", func(t *testing.T) {
 		handler := ListTasksHandler(&mock.TaskRepo{})
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, listTasksInput{
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, listTasksInput{
 			ProjectID: strPtr("p1"),
 			ParentID:  strPtr("t1"),
 		})
@@ -263,7 +266,7 @@ func TestListTasksHandler(t *testing.T) {
 
 	t.Run("neither project_id nor parent_id returns error", func(t *testing.T) {
 		handler := ListTasksHandler(&mock.TaskRepo{})
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, listTasksInput{})
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, listTasksInput{})
 		if err == nil {
 			t.Fatal("expected error when neither project_id nor parent_id provided")
 		}
@@ -276,7 +279,7 @@ func TestListTasksHandler(t *testing.T) {
 			},
 		}
 		handler := ListTasksHandler(tr)
-		_, output, err := handler(context.Background(), &mcp.CallToolRequest{}, listTasksInput{
+		_, output, err := handler(userCtx(), &mcp.CallToolRequest{}, listTasksInput{
 			ProjectID: strPtr("p1"),
 		})
 		if err != nil {
@@ -296,7 +299,7 @@ func TestGetTaskHandler(t *testing.T) {
 			},
 		}
 		handler := GetTaskHandler(tr)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, getTaskInput{TaskID: "no-such"})
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, getTaskInput{TaskID: "no-such"})
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -304,7 +307,7 @@ func TestGetTaskHandler(t *testing.T) {
 
 	t.Run("missing task_id returns error", func(t *testing.T) {
 		handler := GetTaskHandler(&mock.TaskRepo{})
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, getTaskInput{})
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, getTaskInput{})
 		if err == nil {
 			t.Fatal("expected error for missing task_id")
 		}
@@ -323,8 +326,7 @@ func TestCreateTaskHandler(t *testing.T) {
 			CreateFn: func(_ context.Context, _ *model.Task) error { return nil },
 		}
 		handler := CreateTaskHandler(modifyPR, tr)
-		_, output, err := handler(context.Background(), &mcp.CallToolRequest{}, createTaskInput{
-			UserID:    "u1",
+		_, output, err := handler(userCtx(), &mcp.CallToolRequest{}, createTaskInput{
 			ProjectID: "p1",
 			Name:      "My Task",
 		})
@@ -338,7 +340,7 @@ func TestCreateTaskHandler(t *testing.T) {
 
 	t.Run("missing required fields returns error", func(t *testing.T) {
 		handler := CreateTaskHandler(&mock.ProjectRepo{}, &mock.TaskRepo{})
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, createTaskInput{UserID: "u1"})
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, createTaskInput{})
 		if err == nil {
 			t.Fatal("expected error for missing project_id/name")
 		}
@@ -368,8 +370,7 @@ func TestUpdateTaskHandler(t *testing.T) {
 		}
 		pos := 3
 		handler := UpdateTaskHandler(modifyPR, tr, tagRepo)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{
-			UserID:   "u1",
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, updateTaskInput{
 			TaskID:   "t1",
 			Position: &pos,
 		})
@@ -383,7 +384,7 @@ func TestUpdateTaskHandler(t *testing.T) {
 
 	t.Run("missing task_id returns error", func(t *testing.T) {
 		handler := UpdateTaskHandler(&mock.ProjectRepo{}, &mock.TaskRepo{}, &mock.TagRepo{})
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{})
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, updateTaskInput{})
 		if err == nil {
 			t.Fatal("expected error for missing task_id")
 		}
@@ -405,8 +406,8 @@ func TestCreateTaskAccessControl(t *testing.T) {
 			},
 		}
 		handler := CreateTaskHandler(pr, tr)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, createTaskInput{
-			UserID: "u1", ProjectID: "p1", Name: "T",
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, createTaskInput{
+			ProjectID: "p1", Name: "T",
 		})
 		if err == nil {
 			t.Fatal("expected error for read role")
@@ -430,8 +431,8 @@ func TestCreateTaskAccessControl(t *testing.T) {
 			},
 		}
 		handler := CreateTaskHandler(pr, tr)
-		_, output, err := handler(context.Background(), &mcp.CallToolRequest{}, createTaskInput{
-			UserID: "u1", ProjectID: "p1", Name: "T",
+		_, output, err := handler(userCtx(), &mcp.CallToolRequest{}, createTaskInput{
+			ProjectID: "p1", Name: "T",
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -464,8 +465,8 @@ func TestUpdateTaskAccessControl(t *testing.T) {
 		}
 		newName := "X"
 		handler := UpdateTaskHandler(pr, tr, &mock.TagRepo{})
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{
-			UserID: "u1", TaskID: "t1", Name: &newName,
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, updateTaskInput{
+			TaskID: "t1", Name: &newName,
 		})
 		if err == nil {
 			t.Fatal("expected error for read role")
@@ -496,8 +497,8 @@ func TestUpdateTaskAccessControl(t *testing.T) {
 		}
 		newName := "X"
 		handler := UpdateTaskHandler(pr, tr, tagRepo)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{
-			UserID: "u1", TaskID: "t1", Name: &newName,
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, updateTaskInput{
+			TaskID: "t1", Name: &newName,
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -523,8 +524,8 @@ func TestUpdateTaskAccessControl(t *testing.T) {
 		}
 		targetProject := "p2"
 		handler := UpdateTaskHandler(pr, tr, &mock.TagRepo{})
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{
-			UserID: "u1", TaskID: "t1", ProjectID: &targetProject,
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, updateTaskInput{
+			TaskID: "t1", ProjectID: &targetProject,
 		})
 		if err == nil {
 			t.Fatal("expected error: no modify on target project")
@@ -552,8 +553,8 @@ func TestUpdateTaskAccessControl(t *testing.T) {
 		}
 		targetProject := "p2"
 		handler := UpdateTaskHandler(pr, tr, tagRepo)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateTaskInput{
-			UserID: "u1", TaskID: "t1", ProjectID: &targetProject,
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, updateTaskInput{
+			TaskID: "t1", ProjectID: &targetProject,
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -577,8 +578,7 @@ func TestDeleteTaskHandler(t *testing.T) {
 			},
 		}
 		handler := DeleteTaskHandler(pr, tr)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, deleteTaskInput{
-			UserID: "u1",
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, deleteTaskInput{
 			TaskID: "t1",
 		})
 		if err == nil {
@@ -603,8 +603,7 @@ func TestDeleteTaskHandler(t *testing.T) {
 			},
 		}
 		handler := DeleteTaskHandler(pr, tr)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, deleteTaskInput{
-			UserID: "u1",
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, deleteTaskInput{
 			TaskID: "t1",
 		})
 		if err != nil {
@@ -615,9 +614,9 @@ func TestDeleteTaskHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("missing user_id or task_id returns error", func(t *testing.T) {
+	t.Run("missing task_id returns error", func(t *testing.T) {
 		handler := DeleteTaskHandler(&mock.ProjectRepo{}, &mock.TaskRepo{})
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, deleteTaskInput{UserID: "u1"})
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, deleteTaskInput{})
 		if err == nil {
 			t.Fatal("expected error for missing task_id")
 		}

@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/js-beaulieu/tasks/internal/httpserver/middleware"
 	"github.com/js-beaulieu/tasks/internal/model"
 	"github.com/js-beaulieu/tasks/internal/repo"
 )
@@ -18,9 +19,7 @@ var ListProjectsTool = &mcp.Tool{
 	Description: "List all projects visible to the given user.",
 }
 
-type listProjectsInput struct {
-	UserID string `json:"user_id"`
-}
+type listProjectsInput struct{}
 
 type listProjectsResult struct {
 	Projects []*model.Project `json:"projects"`
@@ -28,10 +27,8 @@ type listProjectsResult struct {
 
 func ListProjectsHandler(projects repo.ProjectRepo) mcp.ToolHandlerFor[listProjectsInput, *listProjectsResult] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in listProjectsInput) (*mcp.CallToolResult, *listProjectsResult, error) {
-		if in.UserID == "" {
-			return nil, nil, errors.New("user_id is required")
-		}
-		list, err := projects.List(ctx, in.UserID)
+		userID := middleware.UserFromCtx(ctx).ID
+		list, err := projects.List(ctx, userID)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -71,7 +68,6 @@ var CreateProjectTool = &mcp.Tool{
 }
 
 type createProjectInput struct {
-	UserID      string   `json:"user_id"`
 	Name        string   `json:"name"`
 	Description *string  `json:"description,omitempty"`
 	DueDate     *string  `json:"due_date,omitempty"`
@@ -81,15 +77,16 @@ type createProjectInput struct {
 
 func CreateProjectHandler(projects repo.ProjectRepo) mcp.ToolHandlerFor[createProjectInput, *model.Project] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in createProjectInput) (*mcp.CallToolResult, *model.Project, error) {
-		if in.UserID == "" || in.Name == "" {
-			return nil, nil, errors.New("user_id and name are required")
+		if in.Name == "" {
+			return nil, nil, errors.New("name is required")
 		}
+		userID := middleware.UserFromCtx(ctx).ID
 		p := &model.Project{
 			ID:          uuid.NewString(),
 			Name:        in.Name,
 			Description: in.Description,
 			DueDate:     in.DueDate,
-			OwnerID:     in.UserID,
+			OwnerID:     userID,
 			AssigneeID:  in.AssigneeID,
 		}
 		if err := projects.Create(ctx, p, in.Statuses...); err != nil {
@@ -107,7 +104,6 @@ var UpdateProjectTool = &mcp.Tool{
 }
 
 type updateProjectInput struct {
-	UserID         string   `json:"user_id"`
 	ProjectID      string   `json:"project_id"`
 	Name           *string  `json:"name,omitempty"`
 	Description    *string  `json:"description,omitempty"`
@@ -119,8 +115,8 @@ type updateProjectInput struct {
 
 func UpdateProjectHandler(projects repo.ProjectRepo) mcp.ToolHandlerFor[updateProjectInput, *model.Project] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in updateProjectInput) (*mcp.CallToolResult, *model.Project, error) {
-		if in.UserID == "" || in.ProjectID == "" {
-			return nil, nil, errors.New("user_id and project_id are required")
+		if in.ProjectID == "" {
+			return nil, nil, errors.New("project_id is required")
 		}
 		if in.Name != nil || in.Description != nil || in.DueDate != nil || in.AssigneeID != nil {
 			p, err := projects.Get(ctx, in.ProjectID)

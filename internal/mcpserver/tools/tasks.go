@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/js-beaulieu/tasks/internal/httpserver/middleware"
 	"github.com/js-beaulieu/tasks/internal/httpserver/projects"
 	"github.com/js-beaulieu/tasks/internal/model"
 	"github.com/js-beaulieu/tasks/internal/repo"
@@ -94,7 +95,6 @@ var CreateTaskTool = &mcp.Tool{
 }
 
 type createTaskInput struct {
-	UserID      string  `json:"user_id"`
 	ProjectID   string  `json:"project_id"`
 	ParentID    *string `json:"parent_id,omitempty"`
 	Name        string  `json:"name"`
@@ -106,10 +106,11 @@ type createTaskInput struct {
 
 func CreateTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo) mcp.ToolHandlerFor[createTaskInput, *model.Task] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in createTaskInput) (*mcp.CallToolResult, *model.Task, error) {
-		if in.UserID == "" || in.ProjectID == "" || in.Name == "" {
-			return nil, nil, errors.New("user_id, project_id, and name are required")
+		if in.ProjectID == "" || in.Name == "" {
+			return nil, nil, errors.New("project_id and name are required")
 		}
-		role, err := projectsRepo.GetMemberRole(ctx, in.ProjectID, in.UserID)
+		userID := middleware.UserFromCtx(ctx).ID
+		role, err := projectsRepo.GetMemberRole(ctx, in.ProjectID, userID)
 		if err != nil || !projects.RequireRole(model.RoleModify, role) {
 			return nil, nil, errors.New("no access")
 		}
@@ -125,7 +126,7 @@ func CreateTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo) mcp.T
 			Description: in.Description,
 			Status:      status,
 			DueDate:     in.DueDate,
-			OwnerID:     in.UserID,
+			OwnerID:     userID,
 			AssigneeID:  in.AssigneeID,
 		}
 		if err := tasks.Create(ctx, t); err != nil {
@@ -143,7 +144,6 @@ var UpdateTaskTool = &mcp.Tool{
 }
 
 type updateTaskInput struct {
-	UserID      string   `json:"user_id"`
 	TaskID      string   `json:"task_id"`
 	ProjectID   *string  `json:"project_id,omitempty"`
 	Name        *string  `json:"name,omitempty"`
@@ -163,19 +163,20 @@ type updateTaskResult struct {
 
 func UpdateTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo, tagsRepo repo.TagRepo) mcp.ToolHandlerFor[updateTaskInput, *updateTaskResult] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in updateTaskInput) (*mcp.CallToolResult, *updateTaskResult, error) {
-		if in.UserID == "" || in.TaskID == "" {
-			return nil, nil, errors.New("user_id and task_id are required")
+		if in.TaskID == "" {
+			return nil, nil, errors.New("task_id is required")
 		}
+		userID := middleware.UserFromCtx(ctx).ID
 		t, err := tasks.Get(ctx, in.TaskID)
 		if err != nil {
 			return nil, nil, err
 		}
-		role, err := projectsRepo.GetMemberRole(ctx, t.ProjectID, in.UserID)
+		role, err := projectsRepo.GetMemberRole(ctx, t.ProjectID, userID)
 		if err != nil || !projects.RequireRole(model.RoleModify, role) {
 			return nil, nil, errors.New("no access")
 		}
 		if in.ProjectID != nil && *in.ProjectID != t.ProjectID {
-			targetRole, err := projectsRepo.GetMemberRole(ctx, *in.ProjectID, in.UserID)
+			targetRole, err := projectsRepo.GetMemberRole(ctx, *in.ProjectID, userID)
 			if err != nil || !projects.RequireRole(model.RoleModify, targetRole) {
 				return nil, nil, errors.New("no access to target project")
 			}
@@ -230,7 +231,6 @@ var CompleteTaskTool = &mcp.Tool{
 }
 
 type completeTaskInput struct {
-	UserID     string `json:"user_id"`
 	TaskID     string `json:"task_id"`
 	DoneStatus string `json:"done_status"`
 }
@@ -242,14 +242,15 @@ type completeTaskResult struct {
 
 func CompleteTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo) mcp.ToolHandlerFor[completeTaskInput, *completeTaskResult] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in completeTaskInput) (*mcp.CallToolResult, *completeTaskResult, error) {
-		if in.UserID == "" || in.TaskID == "" || in.DoneStatus == "" {
-			return nil, nil, errors.New("user_id, task_id, and done_status are required")
+		if in.TaskID == "" || in.DoneStatus == "" {
+			return nil, nil, errors.New("task_id and done_status are required")
 		}
+		userID := middleware.UserFromCtx(ctx).ID
 		task, err := tasks.Get(ctx, in.TaskID)
 		if err != nil {
 			return nil, nil, err
 		}
-		role, err := projectsRepo.GetMemberRole(ctx, task.ProjectID, in.UserID)
+		role, err := projectsRepo.GetMemberRole(ctx, task.ProjectID, userID)
 		if err != nil || !projects.RequireRole(model.RoleModify, role) {
 			return nil, nil, errors.New("no access")
 		}
@@ -269,20 +270,20 @@ var DeleteTaskTool = &mcp.Tool{
 }
 
 type deleteTaskInput struct {
-	UserID string `json:"user_id"`
 	TaskID string `json:"task_id"`
 }
 
 func DeleteTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo) mcp.ToolHandlerFor[deleteTaskInput, any] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in deleteTaskInput) (*mcp.CallToolResult, any, error) {
-		if in.UserID == "" || in.TaskID == "" {
-			return nil, nil, errors.New("user_id and task_id are required")
+		if in.TaskID == "" {
+			return nil, nil, errors.New("task_id is required")
 		}
+		userID := middleware.UserFromCtx(ctx).ID
 		t, err := tasks.Get(ctx, in.TaskID)
 		if err != nil {
 			return nil, nil, err
 		}
-		role, err := projectsRepo.GetMemberRole(ctx, t.ProjectID, in.UserID)
+		role, err := projectsRepo.GetMemberRole(ctx, t.ProjectID, userID)
 		if err != nil {
 			return nil, nil, err
 		}

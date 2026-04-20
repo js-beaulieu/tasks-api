@@ -7,10 +7,15 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/js-beaulieu/tasks/internal/httpserver/middleware"
 	"github.com/js-beaulieu/tasks/internal/model"
 	"github.com/js-beaulieu/tasks/internal/repo"
 	"github.com/js-beaulieu/tasks/internal/testing/mock"
 )
+
+func testUserCtx() context.Context {
+	return middleware.WithUser(context.Background(), &model.User{ID: "u1", Name: "Alice", Email: "alice@example.com"})
+}
 
 func TestListProjectsHandlerRepoError(t *testing.T) {
 	t.Run("repo error is propagated", func(t *testing.T) {
@@ -20,7 +25,7 @@ func TestListProjectsHandlerRepoError(t *testing.T) {
 			},
 		}
 		handler := ListProjectsHandler(pr)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, listProjectsInput{UserID: "u1"})
+		_, _, err := handler(testUserCtx(), &mcp.CallToolRequest{}, listProjectsInput{})
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -35,7 +40,7 @@ func TestGetProjectHandlerSuccess(t *testing.T) {
 			},
 		}
 		handler := GetProjectHandler(pr)
-		_, output, err := handler(context.Background(), &mcp.CallToolRequest{}, getProjectInput{ProjectID: "p1"})
+		_, output, err := handler(testUserCtx(), &mcp.CallToolRequest{}, getProjectInput{ProjectID: "p1"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -53,7 +58,7 @@ func TestCreateProjectHandlerRepoError(t *testing.T) {
 			},
 		}
 		handler := CreateProjectHandler(pr)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, createProjectInput{UserID: "u1", Name: "P"})
+		_, _, err := handler(testUserCtx(), &mcp.CallToolRequest{}, createProjectInput{Name: "P"})
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -69,8 +74,8 @@ func TestUpdateProjectHandlerErrors(t *testing.T) {
 			},
 		}
 		handler := UpdateProjectHandler(pr)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateProjectInput{
-			UserID: "u1", ProjectID: "p1", Name: &newName,
+		_, _, err := handler(testUserCtx(), &mcp.CallToolRequest{}, updateProjectInput{
+			ProjectID: "p1", Name: &newName,
 		})
 		if err == nil {
 			t.Fatal("expected error")
@@ -88,8 +93,8 @@ func TestUpdateProjectHandlerErrors(t *testing.T) {
 			},
 		}
 		handler := UpdateProjectHandler(pr)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateProjectInput{
-			UserID: "u1", ProjectID: "p1", Name: &newName,
+		_, _, err := handler(testUserCtx(), &mcp.CallToolRequest{}, updateProjectInput{
+			ProjectID: "p1", Name: &newName,
 		})
 		if err == nil {
 			t.Fatal("expected error")
@@ -110,8 +115,8 @@ func TestUpdateProjectHandlerErrors(t *testing.T) {
 			UpdateFn: func(_ context.Context, _ *model.Project) error { return nil },
 		}
 		handler := UpdateProjectHandler(pr)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateProjectInput{
-			UserID: "u1", ProjectID: "p1", Name: &newName,
+		_, _, err := handler(testUserCtx(), &mcp.CallToolRequest{}, updateProjectInput{
+			ProjectID: "p1", Name: &newName,
 		})
 		if err == nil {
 			t.Fatal("expected error on final Get")
@@ -120,27 +125,19 @@ func TestUpdateProjectHandlerErrors(t *testing.T) {
 }
 
 func TestListProjectsHandler(t *testing.T) {
-	t.Run("valid user_id returns project list without error", func(t *testing.T) {
+	t.Run("returns project list without error", func(t *testing.T) {
 		pr := &mock.ProjectRepo{
 			ListFn: func(_ context.Context, _ string) ([]*model.Project, error) {
 				return []*model.Project{{ID: "p1", Name: "P1", OwnerID: "u1"}}, nil
 			},
 		}
 		handler := ListProjectsHandler(pr)
-		_, output, err := handler(context.Background(), &mcp.CallToolRequest{}, listProjectsInput{UserID: "u1"})
+		_, output, err := handler(testUserCtx(), &mcp.CallToolRequest{}, listProjectsInput{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if output == nil {
 			t.Fatal("expected non-nil output")
-		}
-	})
-
-	t.Run("missing user_id returns error", func(t *testing.T) {
-		handler := ListProjectsHandler(&mock.ProjectRepo{})
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, listProjectsInput{})
-		if err == nil {
-			t.Fatal("expected error for missing user_id")
 		}
 	})
 }
@@ -153,7 +150,7 @@ func TestGetProjectHandler(t *testing.T) {
 			},
 		}
 		handler := GetProjectHandler(pr)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, getProjectInput{ProjectID: "no-such"})
+		_, _, err := handler(testUserCtx(), &mcp.CallToolRequest{}, getProjectInput{ProjectID: "no-such"})
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -164,7 +161,7 @@ func TestGetProjectHandler(t *testing.T) {
 
 	t.Run("missing project_id returns error", func(t *testing.T) {
 		handler := GetProjectHandler(&mock.ProjectRepo{})
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, getProjectInput{})
+		_, _, err := handler(testUserCtx(), &mcp.CallToolRequest{}, getProjectInput{})
 		if err == nil {
 			t.Fatal("expected error for missing project_id")
 		}
@@ -174,17 +171,9 @@ func TestGetProjectHandler(t *testing.T) {
 func TestCreateProjectHandler(t *testing.T) {
 	t.Run("missing name returns error", func(t *testing.T) {
 		handler := CreateProjectHandler(&mock.ProjectRepo{})
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, createProjectInput{UserID: "u1"})
+		_, _, err := handler(testUserCtx(), &mcp.CallToolRequest{}, createProjectInput{})
 		if err == nil {
 			t.Fatal("expected error for missing name")
-		}
-	})
-
-	t.Run("missing user_id returns error", func(t *testing.T) {
-		handler := CreateProjectHandler(&mock.ProjectRepo{})
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, createProjectInput{Name: "P1"})
-		if err == nil {
-			t.Fatal("expected error for missing user_id")
 		}
 	})
 
@@ -197,8 +186,7 @@ func TestCreateProjectHandler(t *testing.T) {
 			},
 		}
 		handler := CreateProjectHandler(pr)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, createProjectInput{
-			UserID:   "u1",
+		_, _, err := handler(testUserCtx(), &mcp.CallToolRequest{}, createProjectInput{
 			Name:     "My Project",
 			Statuses: []string{"À faire", "En cours"},
 		})
@@ -221,8 +209,7 @@ func TestUpdateProjectHandler(t *testing.T) {
 			UpdateFn: func(_ context.Context, _ *model.Project) error { return nil },
 		}
 		handler := UpdateProjectHandler(pr)
-		_, output, err := handler(context.Background(), &mcp.CallToolRequest{}, updateProjectInput{
-			UserID:    "u1",
+		_, output, err := handler(testUserCtx(), &mcp.CallToolRequest{}, updateProjectInput{
 			ProjectID: "p1",
 			Name:      &newName,
 		})
@@ -246,8 +233,7 @@ func TestUpdateProjectHandler(t *testing.T) {
 			},
 		}
 		handler := UpdateProjectHandler(pr)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateProjectInput{
-			UserID:      "u1",
+		_, _, err := handler(testUserCtx(), &mcp.CallToolRequest{}, updateProjectInput{
 			ProjectID:   "p1",
 			AddStatuses: []string{"review", "staging"},
 		})
@@ -267,8 +253,7 @@ func TestUpdateProjectHandler(t *testing.T) {
 			DeleteStatusFn: func(_ context.Context, _, _ string) error { return repo.ErrConflict },
 		}
 		handler := UpdateProjectHandler(pr)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateProjectInput{
-			UserID:         "u1",
+		_, _, err := handler(testUserCtx(), &mcp.CallToolRequest{}, updateProjectInput{
 			ProjectID:      "p1",
 			RemoveStatuses: []string{"todo"},
 		})
@@ -292,8 +277,7 @@ func TestUpdateProjectHandler(t *testing.T) {
 			},
 		}
 		handler := UpdateProjectHandler(pr)
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateProjectInput{
-			UserID:         "u1",
+		_, _, err := handler(testUserCtx(), &mcp.CallToolRequest{}, updateProjectInput{
 			ProjectID:      "p1",
 			RemoveStatuses: []string{"review", "staging"},
 		})
@@ -305,9 +289,9 @@ func TestUpdateProjectHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("missing user_id or project_id returns error", func(t *testing.T) {
+	t.Run("missing project_id returns error", func(t *testing.T) {
 		handler := UpdateProjectHandler(&mock.ProjectRepo{})
-		_, _, err := handler(context.Background(), &mcp.CallToolRequest{}, updateProjectInput{UserID: "u1"})
+		_, _, err := handler(testUserCtx(), &mcp.CallToolRequest{}, updateProjectInput{})
 		if err == nil {
 			t.Fatal("expected error for missing project_id")
 		}
