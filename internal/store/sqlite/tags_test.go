@@ -6,9 +6,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/js-beaulieu/tasks/internal/model"
-	testdb "github.com/js-beaulieu/tasks/internal/testing/db"
-	"github.com/js-beaulieu/tasks/internal/testing/seed"
+	"github.com/js-beaulieu/tasks-api/internal/model"
+	testdb "github.com/js-beaulieu/tasks-api/internal/testing/db"
+	"github.com/js-beaulieu/tasks-api/internal/testing/seed"
 )
 
 func TestTags_AddListForTask(t *testing.T) {

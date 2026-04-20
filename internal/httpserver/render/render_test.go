@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/js-beaulieu/tasks/internal/httpserver/render"
+	"github.com/js-beaulieu/tasks-api/internal/httpserver/render"
 )
 
 func TestJSON(t *testing.T) {

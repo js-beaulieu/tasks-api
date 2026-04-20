@@ -7,7 +7,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/js-beaulieu/tasks/internal/testing/mock"
+	"github.com/js-beaulieu/tasks-api/internal/testing/mock"
 )
 
 func TestListTagsHandlerRepoError(t *testing.T) {

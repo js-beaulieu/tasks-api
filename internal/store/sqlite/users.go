@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/js-beaulieu/tasks/internal/logger"
-	"github.com/js-beaulieu/tasks/internal/model"
-	"github.com/js-beaulieu/tasks/internal/repo"
+	"github.com/js-beaulieu/tasks-api/internal/logger"
+	"github.com/js-beaulieu/tasks-api/internal/model"
+	"github.com/js-beaulieu/tasks-api/internal/repo"
 )
 
 type userStore struct {

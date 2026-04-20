@@ -8,12 +8,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/joho/godotenv"
 
-	"github.com/js-beaulieu/tasks/internal/config"
-	"github.com/js-beaulieu/tasks/internal/httpserver"
-	httpmdw "github.com/js-beaulieu/tasks/internal/httpserver/middleware"
-	"github.com/js-beaulieu/tasks/internal/logger"
-	"github.com/js-beaulieu/tasks/internal/mcpserver"
-	"github.com/js-beaulieu/tasks/internal/store/sqlite"
+	"github.com/js-beaulieu/tasks-api/internal/config"
+	"github.com/js-beaulieu/tasks-api/internal/httpserver"
+	httpmdw "github.com/js-beaulieu/tasks-api/internal/httpserver/middleware"
+	"github.com/js-beaulieu/tasks-api/internal/logger"
+	"github.com/js-beaulieu/tasks-api/internal/mcpserver"
+	"github.com/js-beaulieu/tasks-api/internal/store/sqlite"
 )
 
 func main() {

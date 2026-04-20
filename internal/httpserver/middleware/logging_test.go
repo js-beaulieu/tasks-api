@@ -7,9 +7,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/js-beaulieu/tasks/internal/config"
-	"github.com/js-beaulieu/tasks/internal/httpserver/middleware"
-	"github.com/js-beaulieu/tasks/internal/logger"
+	"github.com/js-beaulieu/tasks-api/internal/config"
+	"github.com/js-beaulieu/tasks-api/internal/httpserver/middleware"
+	"github.com/js-beaulieu/tasks-api/internal/logger"
 )
 
 func TestLogging_EchosProvidedRequestID(t *testing.T) {

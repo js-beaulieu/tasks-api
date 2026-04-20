@@ -1,6 +1,6 @@
 package projects
 
-import "github.com/js-beaulieu/tasks/internal/model"
+import "github.com/js-beaulieu/tasks-api/internal/model"
 
 var roleRank = map[string]int{
 	model.RoleRead:   1,

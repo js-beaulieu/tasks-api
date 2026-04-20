@@ -6,10 +6,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/js-beaulieu/tasks/internal/model"
-	"github.com/js-beaulieu/tasks/internal/repo"
-	testdb "github.com/js-beaulieu/tasks/internal/testing/db"
-	"github.com/js-beaulieu/tasks/internal/testing/seed"
+	"github.com/js-beaulieu/tasks-api/internal/model"
+	"github.com/js-beaulieu/tasks-api/internal/repo"
+	testdb "github.com/js-beaulieu/tasks-api/internal/testing/db"
+	"github.com/js-beaulieu/tasks-api/internal/testing/seed"
 )
 
 // ---- Create / Get ----

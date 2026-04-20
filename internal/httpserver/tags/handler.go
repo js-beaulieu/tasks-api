@@ -5,9 +5,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/js-beaulieu/tasks/internal/httpserver/middleware"
-	"github.com/js-beaulieu/tasks/internal/httpserver/render"
-	"github.com/js-beaulieu/tasks/internal/repo"
+	"github.com/js-beaulieu/tasks-api/internal/httpserver/middleware"
+	"github.com/js-beaulieu/tasks-api/internal/httpserver/render"
+	"github.com/js-beaulieu/tasks-api/internal/repo"
 )
 
 // Handler holds the tags repository dependency.

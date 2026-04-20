@@ -9,8 +9,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/js-beaulieu/tasks/internal/config"
-	"github.com/js-beaulieu/tasks/internal/logger"
+	"github.com/js-beaulieu/tasks-api/internal/config"
+	"github.com/js-beaulieu/tasks-api/internal/logger"
 )
 
 type loggingResponseWriter struct {

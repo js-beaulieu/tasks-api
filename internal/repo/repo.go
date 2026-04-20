@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/js-beaulieu/tasks/internal/model"
+	"github.com/js-beaulieu/tasks-api/internal/model"
 )
 
 var ErrNotFound = errors.New("not found")

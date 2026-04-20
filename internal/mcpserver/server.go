@@ -9,15 +9,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/js-beaulieu/tasks/internal/config"
-	"github.com/js-beaulieu/tasks/internal/logger"
-	"github.com/js-beaulieu/tasks/internal/mcpserver/tools"
-	"github.com/js-beaulieu/tasks/internal/store/sqlite"
+	"github.com/js-beaulieu/tasks-api/internal/config"
+	"github.com/js-beaulieu/tasks-api/internal/logger"
+	"github.com/js-beaulieu/tasks-api/internal/mcpserver/tools"
+	"github.com/js-beaulieu/tasks-api/internal/store/sqlite"
 )
 
 func New(store *sqlite.Store, cfg config.Config) *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{
-		Name:    "tasks",
+		Name:    "tasks-api",
 		Version: "1.0.0",
 	}, nil)
 	mcp.AddTool(s, &mcp.Tool{

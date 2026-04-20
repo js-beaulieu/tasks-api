@@ -5,8 +5,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/js-beaulieu/tasks/internal/httpserver/middleware"
-	"github.com/js-beaulieu/tasks/internal/repo"
+	"github.com/js-beaulieu/tasks-api/internal/httpserver/middleware"
+	"github.com/js-beaulieu/tasks-api/internal/repo"
 )
 
 var ListTagsTool = &mcp.Tool{

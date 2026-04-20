@@ -5,14 +5,14 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/js-beaulieu/tasks/internal/config"
-	"github.com/js-beaulieu/tasks/internal/httpserver/middleware"
-	"github.com/js-beaulieu/tasks/internal/httpserver/projects"
-	"github.com/js-beaulieu/tasks/internal/httpserver/render"
-	taghandler "github.com/js-beaulieu/tasks/internal/httpserver/tags"
-	taskhandler "github.com/js-beaulieu/tasks/internal/httpserver/tasks"
-	"github.com/js-beaulieu/tasks/internal/httpserver/users"
-	"github.com/js-beaulieu/tasks/internal/store/sqlite"
+	"github.com/js-beaulieu/tasks-api/internal/config"
+	"github.com/js-beaulieu/tasks-api/internal/httpserver/middleware"
+	"github.com/js-beaulieu/tasks-api/internal/httpserver/projects"
+	"github.com/js-beaulieu/tasks-api/internal/httpserver/render"
+	taghandler "github.com/js-beaulieu/tasks-api/internal/httpserver/tags"
+	taskhandler "github.com/js-beaulieu/tasks-api/internal/httpserver/tasks"
+	"github.com/js-beaulieu/tasks-api/internal/httpserver/users"
+	"github.com/js-beaulieu/tasks-api/internal/store/sqlite"
 )
 
 func New(store *sqlite.Store, cfg config.Config) http.Handler {

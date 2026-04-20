@@ -7,9 +7,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/js-beaulieu/tasks/internal/httpserver/middleware"
-	"github.com/js-beaulieu/tasks/internal/model"
-	"github.com/js-beaulieu/tasks/internal/repo"
+	"github.com/js-beaulieu/tasks-api/internal/httpserver/middleware"
+	"github.com/js-beaulieu/tasks-api/internal/model"
+	"github.com/js-beaulieu/tasks-api/internal/repo"
 )
 
 // ── list_projects ─────────────────────────────────────────────────────────────

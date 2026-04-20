@@ -7,7 +7,7 @@ import (
 
 	"github.com/lmittmann/tint"
 
-	"github.com/js-beaulieu/tasks/internal/config"
+	"github.com/js-beaulieu/tasks-api/internal/config"
 )
 
 type ctxKey struct{}

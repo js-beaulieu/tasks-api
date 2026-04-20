@@ -1,4 +1,4 @@
-# tasks
+# tasks-api
 
 Backend API for a task management application. Exposes a REST API and an MCP (Model Context Protocol) interface, backed by SQLite.
 

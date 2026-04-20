@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/js-beaulieu/tasks/internal/model"
-	"github.com/js-beaulieu/tasks/internal/store/sqlite"
+	"github.com/js-beaulieu/tasks-api/internal/model"
+	"github.com/js-beaulieu/tasks-api/internal/store/sqlite"
 )
 
 // Project creates a project owned by ownerID and fatals the test if it fails.

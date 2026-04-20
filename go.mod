@@ -1,4 +1,4 @@
-module github.com/js-beaulieu/tasks
+module github.com/js-beaulieu/tasks-api
 
 go 1.26.2
 

@@ -3,7 +3,7 @@ package sqlite
 import (
 	"database/sql"
 
-	"github.com/js-beaulieu/tasks/internal/repo"
+	"github.com/js-beaulieu/tasks-api/internal/repo"
 )
 
 // Store holds concrete sqlite implementations of all repository interfaces.

@@ -3,7 +3,7 @@ package mock
 import (
 	"context"
 
-	"github.com/js-beaulieu/tasks/internal/model"
+	"github.com/js-beaulieu/tasks-api/internal/model"
 )
 
 // UserRepo is a test double for repo.UserRepo.

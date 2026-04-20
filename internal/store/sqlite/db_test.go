@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/js-beaulieu/tasks/internal/store/sqlite"
+	"github.com/js-beaulieu/tasks-api/internal/store/sqlite"
 )
 
 func TestOpen_InMemory(t *testing.T) {

@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/js-beaulieu/tasks/internal/config"
-	testdb "github.com/js-beaulieu/tasks/internal/testing/db"
+	"github.com/js-beaulieu/tasks-api/internal/config"
+	testdb "github.com/js-beaulieu/tasks-api/internal/testing/db"
 )
 
 func TestNew(t *testing.T) {

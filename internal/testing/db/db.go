@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/js-beaulieu/tasks/internal/store/sqlite"
+	"github.com/js-beaulieu/tasks-api/internal/store/sqlite"
 )
 
 // Open opens a fresh isolated in-memory SQLite DB for the given test and

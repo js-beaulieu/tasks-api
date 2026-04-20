@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/js-beaulieu/tasks/internal/model"
-	"github.com/js-beaulieu/tasks/internal/store/sqlite"
+	"github.com/js-beaulieu/tasks-api/internal/model"
+	"github.com/js-beaulieu/tasks-api/internal/store/sqlite"
 )
 
 // Task creates a task in the given project owned by ownerID with an optional parentID.

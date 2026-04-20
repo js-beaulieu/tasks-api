@@ -9,11 +9,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/js-beaulieu/tasks/internal/httpserver/middleware"
-	"github.com/js-beaulieu/tasks/internal/httpserver/tasks"
-	"github.com/js-beaulieu/tasks/internal/model"
-	"github.com/js-beaulieu/tasks/internal/repo"
-	"github.com/js-beaulieu/tasks/internal/testing/mock"
+	"github.com/js-beaulieu/tasks-api/internal/httpserver/middleware"
+	"github.com/js-beaulieu/tasks-api/internal/httpserver/tasks"
+	"github.com/js-beaulieu/tasks-api/internal/model"
+	"github.com/js-beaulieu/tasks-api/internal/repo"
+	"github.com/js-beaulieu/tasks-api/internal/testing/mock"
 )
 
 var testUser = &model.User{ID: "user-1", Name: "Alice", Email: "alice@example.com"}

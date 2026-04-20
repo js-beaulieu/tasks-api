@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/js-beaulieu/tasks/internal/logger"
+	"github.com/js-beaulieu/tasks-api/internal/logger"
 )
 
 func TestFromCtx_FallsBackToDefault(t *testing.T) {
