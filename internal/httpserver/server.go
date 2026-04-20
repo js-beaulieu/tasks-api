@@ -34,6 +34,10 @@ func New(store *sqlite.Store, cfg config.Config) http.Handler {
 
 func wellKnownHandler(cfg config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if cfg.ZitadelIssuer == "" {
+			render.Error(w, http.StatusServiceUnavailable, "authorization server not configured")
+			return
+		}
 		render.JSON(w, http.StatusOK, map[string]any{
 			"issuer":                           cfg.ZitadelIssuer,
 			"authorization_endpoint":           cfg.ZitadelAuthURL,
