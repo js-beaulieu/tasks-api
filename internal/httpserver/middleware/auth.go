@@ -54,3 +54,9 @@ func UserFromCtx(ctx context.Context) *model.User {
 	}
 	return u
 }
+
+// WithUser returns ctx with u stored under the auth middleware's context key.
+// For use in tests only.
+func WithUser(ctx context.Context, u *model.User) context.Context {
+	return context.WithValue(ctx, userCtxKey, u)
+}
