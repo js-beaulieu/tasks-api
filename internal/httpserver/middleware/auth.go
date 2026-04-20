@@ -16,8 +16,8 @@ type ctxKey struct{}
 var userCtxKey = ctxKey{}
 
 // AuthMiddleware reads the X-User-ID header and looks up the user by ID.
-// Returns 401 if the header is absent or no matching user exists.
-// Users are never created implicitly — use POST /login for first-time registration.
+// If the user is not found, it auto-provisions them from X-User-Name and X-User-Email headers
+// (set by the gateway after JWT validation). Returns 401 only if X-User-ID is absent.
 func AuthMiddleware(users repo.UserRepo) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -29,12 +29,18 @@ func AuthMiddleware(users repo.UserRepo) func(http.Handler) http.Handler {
 
 			u, err := users.GetByID(r.Context(), id)
 			if err != nil {
-				if errors.Is(err, repo.ErrNotFound) {
-					render.Error(w, http.StatusUnauthorized, "unauthorized")
+				if !errors.Is(err, repo.ErrNotFound) {
+					render.Error(w, http.StatusInternalServerError, "internal error")
 					return
 				}
-				render.Error(w, http.StatusInternalServerError, "internal error")
-				return
+				u, err = users.Create(r.Context(), id,
+					r.Header.Get("X-User-Name"),
+					r.Header.Get("X-User-Email"),
+				)
+				if err != nil {
+					render.Error(w, http.StatusInternalServerError, "internal error")
+					return
+				}
 			}
 
 			ctx := context.WithValue(r.Context(), userCtxKey, u)
