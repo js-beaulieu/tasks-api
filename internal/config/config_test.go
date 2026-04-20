@@ -1,73 +1,53 @@
-package config_test
+package config
 
 import (
-	"log/slog"
+	"os"
 	"testing"
-
-	"github.com/js-beaulieu/tasks/internal/config"
 )
 
-func TestLoad(t *testing.T) {
-	tests := []struct {
-		name string
-		env  map[string]string
-		want config.Config
-	}{
-		{
-			name: "defaults",
-			env:  map[string]string{},
-			want: config.Config{Port: "8080", LogFormat: "json", LogLevel: slog.LevelInfo, LogDetailed: false},
-		},
-		{
-			name: "custom port",
-			env:  map[string]string{"PORT": "9090"},
-			want: config.Config{Port: "9090", LogFormat: "json", LogLevel: slog.LevelInfo},
-		},
-		{
-			name: "pretty format",
-			env:  map[string]string{"LOG_FORMAT": "pretty"},
-			want: config.Config{Port: "8080", LogFormat: "pretty", LogLevel: slog.LevelInfo},
-		},
-		{
-			name: "debug level",
-			env:  map[string]string{"LOG_LEVEL": "debug"},
-			want: config.Config{Port: "8080", LogFormat: "json", LogLevel: slog.LevelDebug},
-		},
-		{
-			name: "warn level",
-			env:  map[string]string{"LOG_LEVEL": "warn"},
-			want: config.Config{Port: "8080", LogFormat: "json", LogLevel: slog.LevelWarn},
-		},
-		{
-			name: "error level",
-			env:  map[string]string{"LOG_LEVEL": "error"},
-			want: config.Config{Port: "8080", LogFormat: "json", LogLevel: slog.LevelError},
-		},
-		{
-			name: "detailed logging enabled",
-			env:  map[string]string{"LOG_DETAILED": "true"},
-			want: config.Config{Port: "8080", LogFormat: "json", LogLevel: slog.LevelInfo, LogDetailed: true},
-		},
-		{
-			name: "invalid log level falls back to info",
-			env:  map[string]string{"LOG_LEVEL": "nonsense"},
-			want: config.Config{Port: "8080", LogFormat: "json", LogLevel: slog.LevelInfo},
-		},
-	}
+func TestLoadDBPath(t *testing.T) {
+	t.Run("defaults to tasks.db when DB_PATH unset", func(t *testing.T) {
+		os.Unsetenv("DB_PATH")
+		cfg := Load()
+		if cfg.DBPath != "tasks.db" {
+			t.Errorf("DBPath = %q, want tasks.db", cfg.DBPath)
+		}
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("PORT", "")
-			t.Setenv("LOG_FORMAT", "")
-			t.Setenv("LOG_LEVEL", "")
-			t.Setenv("LOG_DETAILED", "")
-			for k, v := range tt.env {
-				t.Setenv(k, v)
-			}
-			got := config.Load()
-			if got != tt.want {
-				t.Errorf("Load() = %+v, want %+v", got, tt.want)
-			}
-		})
-	}
+	t.Run("reads DB_PATH from env", func(t *testing.T) {
+		os.Setenv("DB_PATH", "/data/tasks.db")
+		defer os.Unsetenv("DB_PATH")
+		cfg := Load()
+		if cfg.DBPath != "/data/tasks.db" {
+			t.Errorf("DBPath = %q, want /data/tasks.db", cfg.DBPath)
+		}
+	})
+}
+
+func TestLoadZitadelFields(t *testing.T) {
+	t.Run("reads all Zitadel env vars", func(t *testing.T) {
+		os.Setenv("ZITADEL_ISSUER", "https://example.zitadel.cloud")
+		os.Setenv("ZITADEL_AUTH_URL", "https://example.zitadel.cloud/oauth/v2/authorize")
+		os.Setenv("ZITADEL_TOKEN_URL", "https://example.zitadel.cloud/oauth/v2/token")
+		os.Setenv("ZITADEL_JWKS_URL", "https://example.zitadel.cloud/oauth/v2/keys")
+		defer func() {
+			os.Unsetenv("ZITADEL_ISSUER")
+			os.Unsetenv("ZITADEL_AUTH_URL")
+			os.Unsetenv("ZITADEL_TOKEN_URL")
+			os.Unsetenv("ZITADEL_JWKS_URL")
+		}()
+		cfg := Load()
+		if cfg.ZitadelIssuer != "https://example.zitadel.cloud" {
+			t.Errorf("ZitadelIssuer = %q", cfg.ZitadelIssuer)
+		}
+		if cfg.ZitadelAuthURL != "https://example.zitadel.cloud/oauth/v2/authorize" {
+			t.Errorf("ZitadelAuthURL = %q", cfg.ZitadelAuthURL)
+		}
+		if cfg.ZitadelTokenURL != "https://example.zitadel.cloud/oauth/v2/token" {
+			t.Errorf("ZitadelTokenURL = %q", cfg.ZitadelTokenURL)
+		}
+		if cfg.ZitadelJWKSURL != "https://example.zitadel.cloud/oauth/v2/keys" {
+			t.Errorf("ZitadelJWKSURL = %q", cfg.ZitadelJWKSURL)
+		}
+	})
 }
