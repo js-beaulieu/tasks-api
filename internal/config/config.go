@@ -7,15 +7,11 @@ import (
 )
 
 type Config struct {
-	Port            string
-	DBPath          string
-	LogFormat       string
-	LogLevel        slog.Level
-	LogDetailed     bool
-	ZitadelIssuer   string
-	ZitadelAuthURL  string
-	ZitadelTokenURL string
-	ZitadelJWKSURL  string
+	Port        string
+	DBPath      string
+	LogFormat   string
+	LogLevel    slog.Level
+	LogDetailed bool
 }
 
 func Load() Config {
@@ -39,18 +35,6 @@ func Load() Config {
 	}
 	if v := os.Getenv("LOG_DETAILED"); v != "" {
 		cfg.LogDetailed, _ = strconv.ParseBool(v)
-	}
-	if v := os.Getenv("ZITADEL_ISSUER"); v != "" {
-		cfg.ZitadelIssuer = v
-	}
-	if v := os.Getenv("ZITADEL_AUTH_URL"); v != "" {
-		cfg.ZitadelAuthURL = v
-	}
-	if v := os.Getenv("ZITADEL_TOKEN_URL"); v != "" {
-		cfg.ZitadelTokenURL = v
-	}
-	if v := os.Getenv("ZITADEL_JWKS_URL"); v != "" {
-		cfg.ZitadelJWKSURL = v
 	}
 	return cfg
 }

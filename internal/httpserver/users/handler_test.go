@@ -10,14 +10,13 @@ import (
 	"github.com/js-beaulieu/tasks/internal/httpserver/middleware"
 	"github.com/js-beaulieu/tasks/internal/httpserver/users"
 	"github.com/js-beaulieu/tasks/internal/model"
-"github.com/js-beaulieu/tasks/internal/testing/mock"
+	"github.com/js-beaulieu/tasks/internal/testing/mock"
 )
 
 // authed wraps a handler with AuthMiddleware backed by the given mock.
 func authed(m *mock.UserRepo, h http.Handler) http.Handler {
 	return middleware.AuthMiddleware(m)(h)
 }
-
 
 func TestGetMe(t *testing.T) {
 	t.Run("valid X-User-ID returns 200 and user JSON", func(t *testing.T) {

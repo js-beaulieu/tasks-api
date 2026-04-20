@@ -19,7 +19,6 @@ func New(store *sqlite.Store, cfg config.Config) http.Handler {
 	r := chi.NewRouter()
 
 	r.Get("/health", healthHandler)
-	r.Get("/.well-known/oauth-authorization-server", wellKnownHandler(cfg))
 
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware(store.Users))
@@ -30,24 +29,6 @@ func New(store *sqlite.Store, cfg config.Config) http.Handler {
 	})
 
 	return r
-}
-
-func wellKnownHandler(cfg config.Config) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if cfg.ZitadelIssuer == "" {
-			render.Error(w, http.StatusServiceUnavailable, "authorization server not configured")
-			return
-		}
-		render.JSON(w, http.StatusOK, map[string]any{
-			"issuer":                           cfg.ZitadelIssuer,
-			"authorization_endpoint":           cfg.ZitadelAuthURL,
-			"token_endpoint":                   cfg.ZitadelTokenURL,
-			"jwks_uri":                         cfg.ZitadelJWKSURL,
-			"response_types_supported":         []string{"code"},
-			"grant_types_supported":            []string{"authorization_code", "refresh_token"},
-			"code_challenge_methods_supported": []string{"S256"},
-		})
-	}
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {

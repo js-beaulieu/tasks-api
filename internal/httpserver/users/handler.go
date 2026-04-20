@@ -13,7 +13,6 @@ import (
 	"github.com/js-beaulieu/tasks/internal/repo"
 )
 
-
 type Handler struct {
 	users repo.UserRepo
 }

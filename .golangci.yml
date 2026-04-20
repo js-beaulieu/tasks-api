@@ -3,11 +3,15 @@ version: "2"
 # errcheck, govet, ineffassign, staticcheck, unused are enabled by default.
 
 linters:
+  enable:
+    - nakedret
   settings:
     errcheck:
       exclude-functions:
         - (*database/sql.Rows).Close
         - (*database/sql.DB).Close
+    nakedret:
+      max-func-lines: 0
 
 formatters:
   enable:
