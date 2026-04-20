@@ -23,7 +23,7 @@ func main() {
 	logger.New(cfg)
 	slog.Info("starting server", "port", cfg.Port)
 
-	db, err := sqlite.Open("tasks.db")
+	db, err := sqlite.Open(cfg.DBPath)
 	if err != nil {
 		slog.Error("failed to open database", "err", err)
 		os.Exit(1)
@@ -35,7 +35,10 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(httpmdw.Logging(cfg))
 	r.Mount("/", httpserver.New(store, cfg))
-	r.Handle("/mcp", mcpserver.Handler(store, cfg))
+	r.Group(func(r chi.Router) {
+		r.Use(httpmdw.AuthMiddleware(store.Users))
+		r.Handle("/mcp", mcpserver.Handler(store, cfg))
+	})
 
 	slog.Info("listening", "addr", ":"+cfg.Port)
 	if err := http.ListenAndServe(":"+cfg.Port, r); err != nil {
