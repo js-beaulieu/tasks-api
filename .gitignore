@@ -24,8 +24,9 @@ desktop.ini
 .idea/
 *.swp
 
-# Claude Code — local-only settings (may contain machine-specific paths)
+# Claude Code — local-only settings and generated files
 .claude/settings.local.json
+docs/superpowers/
 
 # Temporary files
 tmp/
