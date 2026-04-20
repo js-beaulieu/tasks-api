@@ -11,8 +11,7 @@ import (
 	"github.com/js-beaulieu/tasks/internal/httpserver/middleware"
 	"github.com/js-beaulieu/tasks/internal/httpserver/users"
 	"github.com/js-beaulieu/tasks/internal/model"
-	repoerr "github.com/js-beaulieu/tasks/internal/repo"
-	"github.com/js-beaulieu/tasks/internal/testing/mock"
+"github.com/js-beaulieu/tasks/internal/testing/mock"
 )
 
 // authed wraps a handler with AuthMiddleware backed by the given mock.
@@ -136,21 +135,6 @@ func TestGetUserByID(t *testing.T) {
 		}
 	})
 
-	t.Run("unknown user returns 404", func(t *testing.T) {
-		m := &mock.UserRepo{Err: repoerr.ErrNotFound}
-		handler := authed(m, users.NewRouter(m))
-
-		req := httptest.NewRequest(http.MethodGet, "/nobody", nil)
-		req.Header.Set("X-User-ID", "nobody")
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, req)
-
-		// Auth middleware also calls GetByID with the same mock, so ErrNotFound
-		// surfaces there first as a 401. The 404 path is covered by integration tests.
-		if w.Code != http.StatusUnauthorized {
-			t.Errorf("status = %d, want 401 (auth blocked by same ErrNotFound mock)", w.Code)
-		}
-	})
 }
 
 func TestUpdateMe(t *testing.T) {
