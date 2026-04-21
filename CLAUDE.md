@@ -124,7 +124,7 @@ internal/
 
 ## Branching
 
-Trunk-based: commit via short-lived feature branches (delete after merge) and PRs. No long-lived branches.
+Trunk-based: `main` is protected — no direct pushes. All changes go through short-lived feature branches and PRs (delete branch after merge). No long-lived branches.
 
 ## Commits
 
