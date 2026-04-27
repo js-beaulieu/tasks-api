@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 jobs:
-  check:
+  ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,7 +15,9 @@ jobs:
           go-version-file: go.mod
 
       - name: Install Task
-        uses: arduino/setup-task@v2
+        uses: go-task/setup-task@v2
+        with:
+          version: "3.x"
 
       - name: Format
         run: |
