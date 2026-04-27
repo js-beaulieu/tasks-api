@@ -5,14 +5,17 @@ Backend API for a task management application. Exposes a REST API and an MCP (Mo
 ## Commands
 
 ```bash
-task build              # build all packages
-task test               # all tests (unit + integration)
-task test:unit          # unit tests only (no DB)
-task test:integration   # integration tests only (SQLite, real DB)
-task fmt                # gofmt -w .
-task lint               # golangci-lint via go tool (pinned in go.mod)
-task check              # fmt + lint + build + test:unit (pre-commit)
+task install                 # install Go tool deps and the pre-commit hook
+task build                   # build all packages
+task test                    # all tests (unit + integration)
+task test:unit               # unit tests only (no DB)
+task test:integration        # integration tests only (SQLite, real DB)
+task format                  # gofmt -w .
+task lint                    # golangci-lint via go tool (pinned in go.mod)
+task check                   # format + lint + build + test:coverage
 ```
+
+`lefthook` runs `task check` on `pre-commit`.
 
 ## Architecture
 

@@ -5,10 +5,13 @@ Backend API for a task management application. Exposes a REST API and an [MCP](h
 ## Getting started
 
 ```bash
+task install
 go run .
 ```
 
-Auth via `X-User-ID` header. See [CLAUDE.md](CLAUDE.md) for full architecture, domain model, access control, and dev commands.
+`task install` installs the pinned Go tools and the `lefthook` pre-commit hook.
+
+Auth via `X-User-ID` header. See [AGENTS.md](AGENTS.md) for full architecture, domain model, access control, and dev commands.
 
 ## Docker
 
@@ -16,7 +19,5 @@ Auth via `X-User-ID` header. See [CLAUDE.md](CLAUDE.md) for full architecture, d
 docker build -t tasks-api .
 docker run -p 8080:8080 tasks-api
 ```
-
-
 
 

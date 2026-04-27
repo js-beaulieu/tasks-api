@@ -14,6 +14,12 @@ tasks:
       - build
       - test:coverage
 
+  install:
+    desc: Install Go tooling and Git hooks
+    cmds:
+      - go mod download
+      - go tool lefthook install
+
   dev:
     desc: Start the server in development (hot-reload via air)
     cmds:
