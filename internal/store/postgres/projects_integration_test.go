@@ -411,6 +411,11 @@ func TestProjects_Statuses(t *testing.T) {
 				t.Error("deleted status 'review' still present")
 			}
 		}
+		for i, s := range statuses {
+			if s.Position != i {
+				t.Fatalf("status %q position = %d, want %d", s.Status, s.Position, i)
+			}
+		}
 	})
 
 	t.Run("DeleteStatus with active tasks returns ErrConflict", func(t *testing.T) {

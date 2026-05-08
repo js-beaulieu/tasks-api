@@ -352,6 +352,10 @@ func (s *projectStore) DeleteStatus(ctx context.Context, projectID, status strin
 	}
 	defer tx.Rollback() //nolint:errcheck
 
+	if err := lockProjectStatuses(ctx, tx, projectID); err != nil {
+		return err
+	}
+
 	var count int
 	err = tx.QueryRowContext(ctx,
 		bind(`SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = ?`),
@@ -364,12 +368,31 @@ func (s *projectStore) DeleteStatus(ctx context.Context, projectID, status strin
 		return repo.ErrConflict
 	}
 
+	var deletedPosition int
+	err = tx.QueryRowContext(ctx,
+		bind(`SELECT position FROM project_statuses WHERE project_id = ? AND status = ?`),
+		projectID, status,
+	).Scan(&deletedPosition)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return repo.ErrNotFound
+		}
+		return fmt.Errorf("load status position: %w", err)
+	}
+
 	_, err = tx.ExecContext(ctx,
 		bind(`DELETE FROM project_statuses WHERE project_id = ? AND status = ?`),
 		projectID, status,
 	)
 	if err != nil {
 		return fmt.Errorf("delete status: %w", err)
+	}
+
+	if _, err = tx.ExecContext(ctx,
+		bind(`UPDATE project_statuses SET position = position - 1 WHERE project_id = ? AND position > ?`),
+		projectID, deletedPosition,
+	); err != nil {
+		return fmt.Errorf("compact status positions: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
