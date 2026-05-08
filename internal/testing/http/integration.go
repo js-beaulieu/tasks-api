@@ -3,6 +3,7 @@ package httptestutil
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -35,11 +36,19 @@ func NewEnv(t *testing.T) *Env {
 	}
 }
 
-func Request(t *testing.T, handler http.Handler, method, path, body, userID string) *httptest.ResponseRecorder {
+func Request(t *testing.T, handler http.Handler, method, path string, body map[string]any, userID string) *httptest.ResponseRecorder {
 	t.Helper()
 
-	req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
-	if body != "" {
+	var reader io.Reader
+	if body != nil {
+		var buf bytes.Buffer
+		if err := json.NewEncoder(&buf).Encode(body); err != nil {
+			t.Fatalf("encode request JSON: %v", err)
+		}
+		reader = &buf
+	}
+	req := httptest.NewRequest(method, path, reader)
+	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	if userID != "" {

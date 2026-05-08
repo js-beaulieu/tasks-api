@@ -17,7 +17,11 @@ func TestTasksIntegration_Update(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPatch, "/tasks/"+task.ID, `{"name":"Updated task","status":"in_progress","position":0}`, env.User.ID)
+	res := httptestutil.Request(t, env.Handler, http.MethodPatch, "/tasks/"+task.ID, map[string]any{
+		"name":     "Updated task",
+		"status":   "in_progress",
+		"position": 0,
+	}, env.User.ID)
 	httptestutil.AssertStatus(t, res, http.StatusOK)
 
 	var updated model.Task
@@ -35,13 +39,16 @@ func TestTasksIntegration_CreateAndListSubtasks(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+task.ID+"/tasks", `{"name":"Test Task","status":"todo"}`, env.User.ID)
+	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+task.ID+"/tasks", map[string]any{
+		"name":   "Test Task",
+		"status": "todo",
+	}, env.User.ID)
 	httptestutil.AssertStatus(t, res, http.StatusCreated)
 
 	var subtask model.Task
 	httptestutil.Decode(t, res, &subtask)
 
-	res = httptestutil.Request(t, env.Handler, http.MethodGet, "/tasks/"+task.ID+"/tasks", "", env.User.ID)
+	res = httptestutil.Request(t, env.Handler, http.MethodGet, "/tasks/"+task.ID+"/tasks", nil, env.User.ID)
 	httptestutil.AssertStatus(t, res, http.StatusOK)
 
 	var tasks []*model.Task
@@ -73,7 +80,7 @@ func TestTasksIntegration_CompleteRecurringTask(t *testing.T) {
 		t.Fatalf("seed recurring tag: %v", err)
 	}
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+recurring.ID+"/complete", `{"done_status":"done"}`, env.User.ID)
+	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+recurring.ID+"/complete", map[string]any{"done_status": "done"}, env.User.ID)
 	httptestutil.AssertStatus(t, res, http.StatusOK)
 
 	var body struct {

@@ -15,10 +15,10 @@ func TestTagsIntegration_AddAndListForTask(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+task.ID+"/tags", `{"tag":"backend"}`, env.User.ID)
+	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+task.ID+"/tags", map[string]any{"tag": "backend"}, env.User.ID)
 	httptestutil.AssertStatus(t, res, http.StatusCreated)
 
-	res = httptestutil.Request(t, env.Handler, http.MethodGet, "/tasks/"+task.ID+"/tags", "", env.User.ID)
+	res = httptestutil.Request(t, env.Handler, http.MethodGet, "/tasks/"+task.ID+"/tags", nil, env.User.ID)
 	httptestutil.AssertStatus(t, res, http.StatusOK)
 
 	var tags []string

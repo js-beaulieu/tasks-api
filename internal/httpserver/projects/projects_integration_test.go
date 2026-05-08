@@ -14,13 +14,18 @@ import (
 func TestProjectsIntegration_CreateAndList(t *testing.T) {
 	env := httptestutil.NewEnv(t)
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/projects", `{"name":"Test Project","description":"integration project","due_date":"2026-06-01","statuses":["review"]}`, env.User.ID)
+	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/projects", map[string]any{
+		"name":        "Test Project",
+		"description": "integration project",
+		"due_date":    "2026-06-01",
+		"statuses":    []string{"review"},
+	}, env.User.ID)
 	httptestutil.AssertStatus(t, res, http.StatusCreated)
 
 	var project model.Project
 	httptestutil.Decode(t, res, &project)
 
-	res = httptestutil.Request(t, env.Handler, http.MethodGet, "/projects", "", env.User.ID)
+	res = httptestutil.Request(t, env.Handler, http.MethodGet, "/projects", nil, env.User.ID)
 	httptestutil.AssertStatus(t, res, http.StatusOK)
 
 	var projects []*model.Project
@@ -34,7 +39,7 @@ func TestProjectsIntegration_ListStatuses(t *testing.T) {
 	env := httptestutil.NewEnv(t)
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID, AdditionalStatuses: []string{"review"}})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/projects/"+project.ID+"/statuses", "", env.User.ID)
+	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/projects/"+project.ID+"/statuses", nil, env.User.ID)
 	httptestutil.AssertStatus(t, res, http.StatusOK)
 
 	var statuses []*model.ProjectStatus

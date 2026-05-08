@@ -12,7 +12,7 @@ import (
 func TestHealthIntegration(t *testing.T) {
 	env := httptestutil.NewEnv(t)
 
-	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/health", "", "")
+	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/health", nil, "")
 	httptestutil.AssertStatus(t, res, http.StatusOK)
 
 	var body map[string]string
