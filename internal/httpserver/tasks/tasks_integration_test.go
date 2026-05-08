@@ -34,7 +34,7 @@ func TestTasksIntegration_CreateAndListSubtasks(t *testing.T) {
 	env := httptestutil.NewEnv(t)
 	project := seed.Project(t, env)
 	task := seed.Task(t, env, project.ID)
-	subtask := seed.Subtask(t, env, task.ID)
+	subtask := seed.Task(t, env, task.ID, true)
 
 	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/tasks/"+task.ID+"/tasks", "", env.User.ID)
 	httptestutil.AssertStatus(t, res, http.StatusOK)

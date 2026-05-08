@@ -89,7 +89,7 @@ func TestMCPTasksIntegration_CreateAndListSubtasks(t *testing.T) {
 	env := mcptest.NewEnv(t)
 	project := seed.Project(t, env)
 	task := seed.Task(t, env, project.ID)
-	subtask := seed.Subtask(t, env, task)
+	subtask := seed.Task(t, env, task)
 
 	listResult := mcptest.CallTool(t, env, "list_tasks", map[string]any{"parent_id": task.ID})
 	list := mcptest.DecodeStructured[struct {

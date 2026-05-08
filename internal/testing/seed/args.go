@@ -22,3 +22,12 @@ func arg[T any](t *testing.T, args []any, index int, name string) T {
 	}
 	return value
 }
+
+func optionalArg[T any](args []any, index int) (T, bool) {
+	if len(args) <= index || args[index] == nil {
+		var zero T
+		return zero, false
+	}
+	value, ok := args[index].(T)
+	return value, ok
+}
