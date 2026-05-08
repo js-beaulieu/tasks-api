@@ -14,8 +14,8 @@ import (
 
 func TestTasksIntegration_Update(t *testing.T) {
 	env := httptestutil.NewEnv(t)
-	project := seed.Project(t, env.Store, env.User.ID)
-	task := seed.Task(t, env.Store, project.ID, env.User.ID, nil)
+	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
+	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
 	res := httptestutil.Request(t, env.Handler, http.MethodPatch, "/tasks/"+task.ID, `{"name":"Updated task","status":"in_progress","position":0}`, env.User.ID)
 	httptestutil.AssertStatus(t, res, http.StatusOK)
@@ -32,8 +32,8 @@ func TestTasksIntegration_Update(t *testing.T) {
 
 func TestTasksIntegration_CreateAndListSubtasks(t *testing.T) {
 	env := httptestutil.NewEnv(t)
-	project := seed.Project(t, env.Store, env.User.ID)
-	task := seed.Task(t, env.Store, project.ID, env.User.ID, nil)
+	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
+	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
 	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+task.ID+"/tasks", `{"name":"Test Task","status":"todo"}`, env.User.ID)
 	httptestutil.AssertStatus(t, res, http.StatusCreated)
@@ -53,7 +53,7 @@ func TestTasksIntegration_CreateAndListSubtasks(t *testing.T) {
 
 func TestTasksIntegration_CompleteRecurringTask(t *testing.T) {
 	env := httptestutil.NewEnv(t)
-	project := seed.Project(t, env.Store, env.User.ID)
+	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	ctx := context.Background()
 
 	due := "2026-05-08"

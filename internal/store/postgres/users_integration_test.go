@@ -51,7 +51,7 @@ func TestUsers_GetByID(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("existing user", func(t *testing.T) {
-		seed.User(t, store, "user-3", "Carol", "carol@example.com")
+		seed.User(t, store, seed.UserInput{ID: "user-3", Name: "Carol", Email: "carol@example.com"})
 		u, err := store.Users.GetByID(ctx, "user-3")
 		if err != nil {
 			t.Fatalf("GetByID: %v", err)
@@ -77,7 +77,7 @@ func TestUsers_Update(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("updates name and email", func(t *testing.T) {
-		u := seed.User(t, store, "u1", "Alice", "alice@example.com")
+		u := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@example.com"})
 		u.Name = "Alicia"
 		u.Email = "alicia@example.com"
 		if err := store.Users.Update(ctx, u); err != nil {
@@ -96,7 +96,7 @@ func TestUsers_Update(t *testing.T) {
 	})
 
 	t.Run("unknown ID returns ErrNotFound", func(t *testing.T) {
-		u := seed.User(t, store, "u2", "Bob", "bob@example.com")
+		u := seed.User(t, store, seed.UserInput{ID: "u2", Name: "Bob", Email: "bob@example.com"})
 		u.ID = "does-not-exist"
 		if err := store.Users.Update(ctx, u); err != repo.ErrNotFound {
 			t.Errorf("err = %v, want repo.ErrNotFound", err)
@@ -104,8 +104,8 @@ func TestUsers_Update(t *testing.T) {
 	})
 
 	t.Run("duplicate email returns ErrConflict", func(t *testing.T) {
-		seed.User(t, store, "u3", "Carol", "carol@example.com")
-		u := seed.User(t, store, "u4", "Dave", "dave@example.com")
+		seed.User(t, store, seed.UserInput{ID: "u3", Name: "Carol", Email: "carol@example.com"})
+		u := seed.User(t, store, seed.UserInput{ID: "u4", Name: "Dave", Email: "dave@example.com"})
 		u.Email = "carol@example.com"
 		if err := store.Users.Update(ctx, u); err != repo.ErrConflict {
 			t.Errorf("err = %v, want repo.ErrConflict", err)
@@ -118,7 +118,7 @@ func TestUsers_Delete(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("deletes existing user", func(t *testing.T) {
-		seed.User(t, store, "u1", "Alice", "alice@example.com")
+		seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@example.com"})
 		if err := store.Users.Delete(ctx, "u1"); err != nil {
 			t.Fatalf("Delete: %v", err)
 		}

@@ -12,7 +12,7 @@ import (
 
 func TestMCPTasksIntegration_CreateListGetUpdateAndComplete(t *testing.T) {
 	env := mcptest.NewEnv(t)
-	project := seed.Project(t, env.Store, env.User.ID)
+	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 
 	createResult := mcptest.CallTool(t, env, "create_task", map[string]any{
 		"project_id":  project.ID,
@@ -95,8 +95,8 @@ func TestMCPTasksIntegration_CreateListGetUpdateAndComplete(t *testing.T) {
 
 func TestMCPTasksIntegration_CreateAndListSubtasks(t *testing.T) {
 	env := mcptest.NewEnv(t)
-	project := seed.Project(t, env.Store, env.User.ID)
-	task := seed.Task(t, env.Store, project.ID, env.User.ID, nil)
+	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
+	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
 	createResult := mcptest.CallTool(t, env, "create_task", map[string]any{
 		"project_id": task.ProjectID,

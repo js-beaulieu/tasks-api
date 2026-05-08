@@ -32,7 +32,7 @@ func TestProjectsIntegration_CreateAndList(t *testing.T) {
 
 func TestProjectsIntegration_ListStatuses(t *testing.T) {
 	env := httptestutil.NewEnv(t)
-	project := seed.Project(t, env.Store, env.User.ID, "review")
+	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID, AdditionalStatuses: []string{"review"}})
 
 	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/projects/"+project.ID+"/statuses", "", env.User.ID)
 	httptestutil.AssertStatus(t, res, http.StatusOK)

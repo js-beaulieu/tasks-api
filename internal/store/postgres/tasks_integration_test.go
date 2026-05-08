@@ -17,8 +17,8 @@ import (
 func TestTasks_CreateGet(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
-	proj := seed.Project(t, store, owner.ID)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
 
 	task := &model.Task{
 		ProjectID: proj.ID,
@@ -61,11 +61,11 @@ func TestTasks_Get_NotFound(t *testing.T) {
 
 func TestTasks_Create_PositionAutoIncrement(t *testing.T) {
 	_, store := testdb.Open(t)
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
-	proj := seed.Project(t, store, owner.ID)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
 
-	t1 := seed.Task(t, store, proj.ID, owner.ID, nil)
-	t2 := seed.Task(t, store, proj.ID, owner.ID, nil)
+	t1 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+	t2 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
 
 	if t1.Position != 0 {
 		t.Errorf("t1.Position = %d, want 0", t1.Position)
@@ -78,8 +78,8 @@ func TestTasks_Create_PositionAutoIncrement(t *testing.T) {
 func TestTasks_Create_InvalidStatus(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
-	proj := seed.Project(t, store, owner.ID)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
 
 	task := &model.Task{
 		ProjectID: proj.ID,
@@ -96,8 +96,8 @@ func TestTasks_Create_InvalidStatus(t *testing.T) {
 func TestTasks_Create_CustomStatus(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
-	proj := seed.Project(t, store, owner.ID)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
 
 	if err := store.Projects.AddStatus(ctx, proj.ID, "review"); err != nil {
 		t.Fatalf("AddStatus: %v", err)
@@ -119,11 +119,11 @@ func TestTasks_Create_CustomStatus(t *testing.T) {
 func TestTasks_ListChildren(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
-	proj := seed.Project(t, store, owner.ID)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
 
-	t1 := seed.Task(t, store, proj.ID, owner.ID, nil)
-	t2 := seed.Task(t, store, proj.ID, owner.ID, nil)
+	t1 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+	t2 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
 
 	t.Run("top-level tasks returned ordered by position", func(t *testing.T) {
 		tasks, err := store.Tasks.ListChildren(ctx, proj.ID, nil, repo.TaskFilter{})
@@ -155,7 +155,7 @@ func TestTasks_ListChildren(t *testing.T) {
 	})
 
 	t.Run("assignee filter returns only matching tasks", func(t *testing.T) {
-		assignee := seed.User(t, store, "u2", "Bob", "bob@test.com")
+		assignee := seed.User(t, store, seed.UserInput{ID: "u2", Name: "Bob", Email: "bob@test.com"})
 		t1.AssigneeID = &assignee.ID
 		if err := store.Tasks.Update(ctx, t1); err != nil {
 			t.Fatalf("Update: %v", err)
@@ -203,9 +203,9 @@ func TestTasks_ListChildren(t *testing.T) {
 func TestTasks_Update_NameOnly(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
-	proj := seed.Project(t, store, owner.ID)
-	task := seed.Task(t, store, proj.ID, owner.ID, nil)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+	task := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
 
 	originalUpdatedAt := task.UpdatedAt
 	task.Name = "Updated Name"
@@ -228,9 +228,9 @@ func TestTasks_Update_NameOnly(t *testing.T) {
 func TestTasks_Update_InvalidStatus(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
-	proj := seed.Project(t, store, owner.ID)
-	task := seed.Task(t, store, proj.ID, owner.ID, nil)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+	task := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
 
 	task.Status = "bogus"
 	err := store.Tasks.Update(ctx, task)
@@ -242,12 +242,12 @@ func TestTasks_Update_InvalidStatus(t *testing.T) {
 func TestTasks_Update_PositionReorderUp(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
-	proj := seed.Project(t, store, owner.ID)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
 
-	t0 := seed.Task(t, store, proj.ID, owner.ID, nil) // pos 0
-	t1 := seed.Task(t, store, proj.ID, owner.ID, nil) // pos 1
-	t2 := seed.Task(t, store, proj.ID, owner.ID, nil) // pos 2
+	t0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID}) // pos 0
+	t1 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID}) // pos 1
+	t2 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID}) // pos 2
 
 	// Move t2 (pos=2) up to pos=0
 	t2.Position = 0
@@ -281,12 +281,12 @@ func TestTasks_Update_PositionReorderUp(t *testing.T) {
 func TestTasks_Update_PositionReorderDown(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
-	proj := seed.Project(t, store, owner.ID)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
 
-	t0 := seed.Task(t, store, proj.ID, owner.ID, nil) // pos 0
-	t1 := seed.Task(t, store, proj.ID, owner.ID, nil) // pos 1
-	t2 := seed.Task(t, store, proj.ID, owner.ID, nil) // pos 2
+	t0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID}) // pos 0
+	t1 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID}) // pos 1
+	t2 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID}) // pos 2
 
 	// Move t0 (pos=0) down to pos=2
 	t0.Position = 2
@@ -319,10 +319,10 @@ func TestTasks_Update_PositionReorderDown(t *testing.T) {
 func TestTasks_Delete(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
-	proj := seed.Project(t, store, owner.ID)
-	parent := seed.Task(t, store, proj.ID, owner.ID, nil)
-	child := seed.Task(t, store, proj.ID, owner.ID, &parent.ID)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+	parent := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+	child := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, ParentID: &parent.ID})
 
 	if err := store.Tasks.Delete(ctx, parent.ID); err != nil {
 		t.Fatalf("Delete parent: %v", err)
@@ -343,12 +343,12 @@ func TestTasks_Delete(t *testing.T) {
 func TestTasks_Move_BetweenParents(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
-	proj := seed.Project(t, store, owner.ID)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
 
-	parentA := seed.Task(t, store, proj.ID, owner.ID, nil)
-	parentB := seed.Task(t, store, proj.ID, owner.ID, nil)
-	child := seed.Task(t, store, proj.ID, owner.ID, &parentA.ID)
+	parentA := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+	parentB := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+	child := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, ParentID: &parentA.ID})
 
 	// Move child from parentA to parentB
 	child.ParentID = &parentB.ID
@@ -382,13 +382,13 @@ func TestTasks_Move_BetweenParents(t *testing.T) {
 func TestTasks_Move_BetweenProjects(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
-	projX := seed.Project(t, store, owner.ID)
-	projY := seed.Project(t, store, owner.ID)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	projX := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+	projY := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
 
-	task := seed.Task(t, store, projX.ID, owner.ID, nil)
+	task := seed.Task(t, store, seed.TaskInput{ProjectID: projX.ID, OwnerID: owner.ID})
 	// Extra task in projX to verify position compaction
-	_ = seed.Task(t, store, projX.ID, owner.ID, nil)
+	_ = seed.Task(t, store, seed.TaskInput{ProjectID: projX.ID, OwnerID: owner.ID})
 
 	// Move task from projX to projY
 	task.ProjectID = projY.ID
@@ -427,8 +427,8 @@ func TestTasks_Move_BetweenProjects(t *testing.T) {
 func TestTasks_Create_WithRecurrence(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
-	proj := seed.Project(t, store, owner.ID)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
 
 	rec := "FREQ=WEEKLY"
 	task := &model.Task{
@@ -454,9 +454,9 @@ func TestTasks_Create_WithRecurrence(t *testing.T) {
 func TestTasks_CompleteTask_NonRecurring(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
-	proj := seed.Project(t, store, owner.ID)
-	task := seed.Task(t, store, proj.ID, owner.ID, nil)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+	task := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
 
 	completed, next, err := store.Tasks.CompleteTask(ctx, task.ID, "done")
 	if err != nil {
@@ -476,8 +476,8 @@ func TestTasks_CompleteTask_NonRecurring(t *testing.T) {
 func TestTasks_CompleteTask_RecurringNoDueDate(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
-	proj := seed.Project(t, store, owner.ID)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
 
 	rec := "FREQ=DAILY"
 	task := &model.Task{
@@ -510,8 +510,8 @@ func TestTasks_CompleteTask_RecurringNoDueDate(t *testing.T) {
 func TestTasks_CompleteTask_Recurring(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
-	proj := seed.Project(t, store, owner.ID)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
 
 	due := "2026-04-14"
 	rec := "FREQ=DAILY"
@@ -574,9 +574,9 @@ func TestTasks_CompleteTask_Recurring(t *testing.T) {
 func TestTasks_CompleteTask_InvalidDoneStatus(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
-	proj := seed.Project(t, store, owner.ID)
-	task := seed.Task(t, store, proj.ID, owner.ID, nil)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+	task := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
 
 	_, _, err := store.Tasks.CompleteTask(ctx, task.ID, "nonexistent_status")
 	if err != repo.ErrConflict {
@@ -597,11 +597,11 @@ func TestTasks_CompleteTask_InvalidDoneStatus(t *testing.T) {
 func TestTasks_CycleGuard(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
-	proj := seed.Project(t, store, owner.ID)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
 
-	taskA := seed.Task(t, store, proj.ID, owner.ID, nil)
-	taskB := seed.Task(t, store, proj.ID, owner.ID, &taskA.ID) // B is child of A
+	taskA := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+	taskB := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, ParentID: &taskA.ID}) // B is child of A
 
 	t.Run("self-reference returns ErrConflict", func(t *testing.T) {
 		orig := taskA.ParentID
