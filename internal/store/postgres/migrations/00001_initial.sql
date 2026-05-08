@@ -52,6 +52,10 @@ CREATE TABLE IF NOT EXISTS task_tags (
     PRIMARY KEY (task_id, tag)
 );
 
+-- Indexes mirror the repository read paths:
+-- - project list/access by owner or member
+-- - task list/reorder by project, parent, and position
+-- - distinct tag lookup by tag text
 CREATE INDEX IF NOT EXISTS idx_projects_owner ON projects(owner_id);
 CREATE INDEX IF NOT EXISTS idx_pm_user ON project_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);

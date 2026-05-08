@@ -11,7 +11,7 @@ import (
 
 func TestOpen(t *testing.T) {
 	t.Run("valid postgres dsn succeeds", func(t *testing.T) {
-		db, err := postgres.Open(testdb.DatabaseURL(t))
+		db, err := postgres.Open(testdb.PGConnectionString(t))
 		if err != nil {
 			t.Fatalf("Open: %v", err)
 		}
@@ -24,7 +24,7 @@ func TestOpen(t *testing.T) {
 }
 
 func TestNew(t *testing.T) {
-	db, err := postgres.Open(testdb.DatabaseURL(t))
+	db, err := postgres.Open(testdb.PGConnectionString(t))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

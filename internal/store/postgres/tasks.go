@@ -182,85 +182,8 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 	newParentID := t.ParentID
 	isMove := t.ProjectID != cur.ProjectID || !parentIDsEqual(newParentID, cur.ParentID)
 
-	if isMove {
-		if targetProjectID != cur.ProjectID {
-			var hasChildren bool
-			err = tx.QueryRowContext(ctx,
-				bind(`SELECT EXISTS (SELECT 1 FROM tasks WHERE parent_id = ?)`),
-				t.ID,
-			).Scan(&hasChildren)
-			if err != nil {
-				return fmt.Errorf("check children: %w", err)
-			}
-			if hasChildren {
-				return repo.ErrConflict
-			}
-		}
-
-		// Cycle guard via recursive CTE
-		if err := checkCycle(ctx, tx, t.ID, newParentID); err != nil {
-			return err
-		}
-
-		// Validate new parent belongs to target project
-		if newParentID != nil {
-			var parentProject string
-			err = tx.QueryRowContext(ctx,
-				bind(`SELECT project_id FROM tasks WHERE id = ?`), *newParentID,
-			).Scan(&parentProject)
-			if err != nil {
-				if errors.Is(err, sql.ErrNoRows) {
-					return repo.ErrNotFound
-				}
-				return fmt.Errorf("validate new parent: %w", err)
-			}
-			if parentProject != targetProjectID {
-				return repo.ErrConflict
-			}
-		}
-
-		// Compact old sibling group (shift down to fill gap)
-		_, err = tx.ExecContext(ctx,
-			bind(`UPDATE tasks SET position = position - 1
-			 WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ? AND position > ?`),
-			cur.ProjectID, cur.ParentID, cur.Position,
-		)
-		if err != nil {
-			return fmt.Errorf("compact old siblings: %w", err)
-		}
-
-		// Make room in new sibling group (shift up at target position)
-		_, err = tx.ExecContext(ctx,
-			bind(`UPDATE tasks SET position = position + 1
-			 WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ? AND position >= ? AND id != ?`),
-			targetProjectID, newParentID, t.Position, t.ID,
-		)
-		if err != nil {
-			return fmt.Errorf("shift new siblings: %w", err)
-		}
-	} else {
-		// Same parent — reorder within the group
-		oldPos := cur.Position
-		newPos := t.Position
-
-		if newPos < oldPos {
-			// Moving up: shift others down in [newPos, oldPos)
-			_, err = tx.ExecContext(ctx,
-				bind(`UPDATE tasks SET position = position + 1
-				 WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ? AND position >= ? AND position < ? AND id != ?`),
-				cur.ProjectID, cur.ParentID, newPos, oldPos, t.ID,
-			)
-		} else if newPos > oldPos {
-			// Moving down: shift others up in (oldPos, newPos]
-			_, err = tx.ExecContext(ctx,
-				bind(`UPDATE tasks SET position = position - 1
-				 WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ? AND position > ? AND position <= ? AND id != ?`),
-				cur.ProjectID, cur.ParentID, oldPos, newPos, t.ID,
-			)
-		}
-		if err != nil {
-			return fmt.Errorf("reorder siblings: %w", err)
-		}
+	if err := updateTaskPosition(ctx, tx, t.ID, cur, targetProjectID, newParentID, t.Position, isMove); err != nil {
+		return err
 	}
 
 	// Build parent_id value for SQL
@@ -474,6 +397,111 @@ func validateStatus(ctx context.Context, tx *sql.Tx, projectID, status string) e
 	}
 	if count == 0 {
 		return repo.ErrConflict
+	}
+	return nil
+}
+
+func updateTaskPosition(ctx context.Context, tx *sql.Tx, taskID string, cur model.Task, targetProjectID string, newParentID *string, newPosition int, isMove bool) error {
+	if !isMove {
+		return reorderTaskSiblings(ctx, tx, taskID, cur, newPosition)
+	}
+	if targetProjectID != cur.ProjectID {
+		if err := ensureTaskIsLeaf(ctx, tx, taskID); err != nil {
+			return err
+		}
+	}
+	if err := checkCycle(ctx, tx, taskID, newParentID); err != nil {
+		return err
+	}
+	if err := validateMoveParent(ctx, tx, targetProjectID, newParentID); err != nil {
+		return err
+	}
+	if err := compactOldSiblings(ctx, tx, cur); err != nil {
+		return err
+	}
+	return shiftNewSiblings(ctx, tx, taskID, targetProjectID, newParentID, newPosition)
+}
+
+func ensureTaskIsLeaf(ctx context.Context, tx *sql.Tx, taskID string) error {
+	var hasChildren bool
+	err := tx.QueryRowContext(ctx,
+		bind(`SELECT EXISTS (SELECT 1 FROM tasks WHERE parent_id = ?)`),
+		taskID,
+	).Scan(&hasChildren)
+	if err != nil {
+		return fmt.Errorf("check children: %w", err)
+	}
+	if hasChildren {
+		return repo.ErrConflict
+	}
+	return nil
+}
+
+func validateMoveParent(ctx context.Context, tx *sql.Tx, targetProjectID string, newParentID *string) error {
+	if newParentID == nil {
+		return nil
+	}
+	var parentProject string
+	err := tx.QueryRowContext(ctx,
+		bind(`SELECT project_id FROM tasks WHERE id = ?`), *newParentID,
+	).Scan(&parentProject)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return repo.ErrNotFound
+		}
+		return fmt.Errorf("validate new parent: %w", err)
+	}
+	if parentProject != targetProjectID {
+		return repo.ErrConflict
+	}
+	return nil
+}
+
+func compactOldSiblings(ctx context.Context, tx *sql.Tx, cur model.Task) error {
+	_, err := tx.ExecContext(ctx,
+		bind(`UPDATE tasks SET position = position - 1
+		 WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ? AND position > ?`),
+		cur.ProjectID, cur.ParentID, cur.Position,
+	)
+	if err != nil {
+		return fmt.Errorf("compact old siblings: %w", err)
+	}
+	return nil
+}
+
+func shiftNewSiblings(ctx context.Context, tx *sql.Tx, taskID, targetProjectID string, newParentID *string, newPosition int) error {
+	_, err := tx.ExecContext(ctx,
+		bind(`UPDATE tasks SET position = position + 1
+		 WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ? AND position >= ? AND id != ?`),
+		targetProjectID, newParentID, newPosition, taskID,
+	)
+	if err != nil {
+		return fmt.Errorf("shift new siblings: %w", err)
+	}
+	return nil
+}
+
+func reorderTaskSiblings(ctx context.Context, tx *sql.Tx, taskID string, cur model.Task, newPosition int) error {
+	oldPosition := cur.Position
+	switch {
+	case newPosition < oldPosition:
+		_, err := tx.ExecContext(ctx,
+			bind(`UPDATE tasks SET position = position + 1
+			 WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ? AND position >= ? AND position < ? AND id != ?`),
+			cur.ProjectID, cur.ParentID, newPosition, oldPosition, taskID,
+		)
+		if err != nil {
+			return fmt.Errorf("reorder siblings: %w", err)
+		}
+	case newPosition > oldPosition:
+		_, err := tx.ExecContext(ctx,
+			bind(`UPDATE tasks SET position = position - 1
+			 WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ? AND position > ? AND position <= ? AND id != ?`),
+			cur.ProjectID, cur.ParentID, oldPosition, newPosition, taskID,
+		)
+		if err != nil {
+			return fmt.Errorf("reorder siblings: %w", err)
+		}
 	}
 	return nil
 }

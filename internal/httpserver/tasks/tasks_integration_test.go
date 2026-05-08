@@ -9,12 +9,13 @@ import (
 
 	"github.com/js-beaulieu/tasks-api/internal/model"
 	"github.com/js-beaulieu/tasks-api/internal/testing/http"
+	"github.com/js-beaulieu/tasks-api/internal/testing/seed"
 )
 
 func TestTasksIntegration_Update(t *testing.T) {
 	env := httptestutil.NewEnv(t)
-	project := httptestutil.CreateProject(t, env)
-	task := httptestutil.CreateTask(t, env, project.ID)
+	project := seed.HTTPProject(t, env)
+	task := seed.HTTPTask(t, env, project.ID)
 
 	res := httptestutil.Request(t, env.Handler, http.MethodPatch, "/tasks/"+task.ID, `{"name":"Updated task","status":"in_progress","position":0}`, env.User.ID)
 	httptestutil.AssertStatus(t, res, http.StatusOK)
@@ -31,9 +32,9 @@ func TestTasksIntegration_Update(t *testing.T) {
 
 func TestTasksIntegration_CreateAndListSubtasks(t *testing.T) {
 	env := httptestutil.NewEnv(t)
-	project := httptestutil.CreateProject(t, env)
-	task := httptestutil.CreateTask(t, env, project.ID)
-	subtask := httptestutil.CreateSubtask(t, env, task.ID)
+	project := seed.HTTPProject(t, env)
+	task := seed.HTTPTask(t, env, project.ID)
+	subtask := seed.HTTPSubtask(t, env, task.ID)
 
 	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/tasks/"+task.ID+"/tasks", "", env.User.ID)
 	httptestutil.AssertStatus(t, res, http.StatusOK)
@@ -47,7 +48,7 @@ func TestTasksIntegration_CreateAndListSubtasks(t *testing.T) {
 
 func TestTasksIntegration_CompleteRecurringTask(t *testing.T) {
 	env := httptestutil.NewEnv(t)
-	project := httptestutil.CreateProject(t, env)
+	project := seed.HTTPProject(t, env)
 	ctx := context.Background()
 
 	due := "2026-05-08"

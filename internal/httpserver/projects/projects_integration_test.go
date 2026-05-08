@@ -8,11 +8,12 @@ import (
 
 	"github.com/js-beaulieu/tasks-api/internal/model"
 	"github.com/js-beaulieu/tasks-api/internal/testing/http"
+	"github.com/js-beaulieu/tasks-api/internal/testing/seed"
 )
 
 func TestProjectsIntegration_CreateAndList(t *testing.T) {
 	env := httptestutil.NewEnv(t)
-	project := httptestutil.CreateProject(t, env)
+	project := seed.HTTPProject(t, env)
 
 	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/projects", "", env.User.ID)
 	httptestutil.AssertStatus(t, res, http.StatusOK)
@@ -26,7 +27,7 @@ func TestProjectsIntegration_CreateAndList(t *testing.T) {
 
 func TestProjectsIntegration_ListStatuses(t *testing.T) {
 	env := httptestutil.NewEnv(t)
-	project := httptestutil.CreateProject(t, env)
+	project := seed.HTTPProject(t, env)
 
 	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/projects/"+project.ID+"/statuses", "", env.User.ID)
 	httptestutil.AssertStatus(t, res, http.StatusOK)

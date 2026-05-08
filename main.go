@@ -23,7 +23,7 @@ func main() {
 	logger.New(cfg)
 	slog.Info("starting server", "port", cfg.Port)
 
-	db, err := postgres.Open(cfg.DatabaseURL)
+	db, err := postgres.Open(cfg.PGConnectionString)
 	if err != nil {
 		slog.Error("failed to open database", "err", err)
 		os.Exit(1)

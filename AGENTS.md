@@ -21,7 +21,7 @@ task check                   # format + lint + build + test:coverage
 
 ```
 main.go
-  └─ postgres.Open(DATABASE_URL) → postgres.Store{Users, Projects, Tasks, Tags}
+  └─ postgres.Open(PG_CONNECTION_STRING) → postgres.Store{Users, Projects, Tasks, Tags}
   └─ chi router
        ├─ httpserver.New(store)      → REST on /
        └─ mcpserver.Handler(store)   → MCP StreamableHTTP on /mcp
@@ -36,7 +36,7 @@ All layers talk through `internal/repo` interfaces — handlers never import `po
 | `internal/model` | Domain structs: User, Project, ProjectMember, ProjectStatus, Task |
 | `internal/repo` | Repository interfaces + sentinel errors (ErrNotFound, ErrNoAccess, ErrConflict) |
 | `internal/store/postgres` | Concrete Postgres implementations; goose migrations in `migrations/` |
-| `internal/config` | Config struct loaded from env (PORT, DATABASE_URL, LOG_FORMAT, LOG_LEVEL, LOG_DETAILED) |
+| `internal/config` | Config struct loaded from env (PORT, PG_CONNECTION_STRING, LOG_FORMAT, LOG_LEVEL, LOG_DETAILED) |
 | `internal/logger` | slog-based logger; `logger.FromCtx` / `logger.IntoCtx` context helpers |
 | `internal/httpserver` | chi router wiring; sub-packages: middleware, projects, tasks, tags, users, render |
 | `internal/mcpserver` | MCP server wiring + `withLogging` wrapper; sub-package: tools |

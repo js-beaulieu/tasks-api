@@ -36,9 +36,9 @@ tasks:
     desc: Run the Docker image (--rm, port 8080)
     vars:
       TAG: '{{default "tasks:latest" .TAG}}'
-      DATABASE_URL: '{{default "postgres://postgres:postgres@host.docker.internal:5432/tasks_api?sslmode=disable" .DATABASE_URL}}'
+      PG_CONNECTION_STRING: '{{default "postgres://postgres:postgres@host.docker.internal:5432/tasks_api?sslmode=disable" .PG_CONNECTION_STRING}}'
     cmds:
-      - docker run --rm --add-host=host.docker.internal:host-gateway -e DATABASE_URL={{.DATABASE_URL}} -p 8080:8080 {{.TAG}}
+      - docker run --rm --add-host=host.docker.internal:host-gateway -e PG_CONNECTION_STRING={{.PG_CONNECTION_STRING}} -p 8080:8080 {{.TAG}}
 
   compose:up:
     desc: Start local Postgres for development

@@ -24,9 +24,9 @@ var (
 	containerURL  *url.URL
 )
 
-// CreateDatabaseConnection provisions a fresh Postgres database for the current test and
+// PGConnectionString provisions a fresh Postgres database for the current test and
 // returns a DSN that callers can open with the app's postgres.Open helper.
-func CreateDatabaseConnection(t *testing.T) string {
+func PGConnectionString(t *testing.T) string {
 	t.Helper()
 
 	adminDB := openContainerDB(t)
@@ -61,18 +61,12 @@ func CreateDatabaseConnection(t *testing.T) string {
 	return dsn.String()
 }
 
-// DatabaseURL preserves the shorter helper name used by store integration tests.
-func DatabaseURL(t *testing.T) string {
-	t.Helper()
-	return CreateDatabaseConnection(t)
-}
-
 // Open opens a fresh isolated Postgres DB for the given test, runs migrations,
 // and returns both the raw DB handle and the concrete store.
 func Open(t *testing.T) (*sql.DB, *postgres.Store) {
 	t.Helper()
 
-	rawDB, err := postgres.Open(CreateDatabaseConnection(t))
+	rawDB, err := postgres.Open(PGConnectionString(t))
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)
 	}
