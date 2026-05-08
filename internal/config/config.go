@@ -8,7 +8,7 @@ import (
 
 type Config struct {
 	Port        string
-	DBPath      string
+	DatabaseURL string
 	LogFormat   string
 	LogLevel    slog.Level
 	LogDetailed bool
@@ -16,16 +16,16 @@ type Config struct {
 
 func Load() Config {
 	cfg := Config{
-		Port:      "8080",
-		DBPath:    "tasks.db",
-		LogFormat: "json",
-		LogLevel:  slog.LevelInfo,
+		Port:        "8080",
+		DatabaseURL: "postgres://postgres:postgres@localhost:5432/tasks_api?sslmode=disable",
+		LogFormat:   "json",
+		LogLevel:    slog.LevelInfo,
 	}
 	if v := os.Getenv("PORT"); v != "" {
 		cfg.Port = v
 	}
-	if v := os.Getenv("DB_PATH"); v != "" {
-		cfg.DBPath = v
+	if v := os.Getenv("DATABASE_URL"); v != "" {
+		cfg.DatabaseURL = v
 	}
 	if v := os.Getenv("LOG_FORMAT"); v != "" {
 		cfg.LogFormat = v

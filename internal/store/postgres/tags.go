@@ -1,4 +1,4 @@
-package sqlite
+package postgres
 
 import (
 	"context"
@@ -14,7 +14,7 @@ type tagStore struct{ db *sql.DB }
 func (s *tagStore) ListForTask(ctx context.Context, taskID string) ([]string, error) {
 	logger.FromCtx(ctx).Debug("listing tags for task", "task_id", taskID)
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT tag FROM task_tags WHERE task_id = ? ORDER BY tag`, taskID)
+		bind(`SELECT tag FROM task_tags WHERE task_id = ? ORDER BY tag`), taskID)
 	if err != nil {
 		return nil, fmt.Errorf("list tags for task: %w", err)
 	}
@@ -32,11 +32,11 @@ func (s *tagStore) ListForTask(ctx context.Context, taskID string) ([]string, er
 	return tags, rows.Err()
 }
 
-// Add attaches a tag to a task. Idempotent (INSERT OR IGNORE).
+// Add attaches a tag to a task. Idempotent.
 func (s *tagStore) Add(ctx context.Context, taskID, tag string) error {
 	logger.FromCtx(ctx).Debug("adding tag", "task_id", taskID, "tag", tag)
 	_, err := s.db.ExecContext(ctx,
-		`INSERT OR IGNORE INTO task_tags (task_id, tag) VALUES (?, ?)`, taskID, tag)
+		bind(`INSERT INTO task_tags (task_id, tag) VALUES (?, ?) ON CONFLICT DO NOTHING`), taskID, tag)
 	if err != nil {
 		return fmt.Errorf("add tag: %w", err)
 	}
@@ -48,7 +48,7 @@ func (s *tagStore) Add(ctx context.Context, taskID, tag string) error {
 func (s *tagStore) Delete(ctx context.Context, taskID, tag string) error {
 	logger.FromCtx(ctx).Debug("deleting tag", "task_id", taskID, "tag", tag)
 	_, err := s.db.ExecContext(ctx,
-		`DELETE FROM task_tags WHERE task_id = ? AND tag = ?`, taskID, tag)
+		bind(`DELETE FROM task_tags WHERE task_id = ? AND tag = ?`), taskID, tag)
 	if err != nil {
 		return fmt.Errorf("delete tag: %w", err)
 	}
@@ -60,14 +60,14 @@ func (s *tagStore) Delete(ctx context.Context, taskID, tag string) error {
 // and member projects), sorted alphabetically.
 func (s *tagStore) ListDistinctForUser(ctx context.Context, userID string) ([]string, error) {
 	logger.FromCtx(ctx).Debug("listing distinct tags", "user_id", userID)
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.db.QueryContext(ctx, bind(`
 		SELECT DISTINCT tt.tag
 		FROM task_tags tt
 		JOIN tasks t ON tt.task_id = t.id
 		JOIN projects p ON t.project_id = p.id
 		LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
 		WHERE p.owner_id = ? OR pm.user_id = ?
-		ORDER BY tt.tag`,
+		ORDER BY tt.tag`),
 		userID, userID, userID,
 	)
 	if err != nil {

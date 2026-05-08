@@ -1,6 +1,6 @@
 //go:build integration
 
-package sqlite_test
+package postgres_test
 
 import (
 	"context"
@@ -414,10 +414,9 @@ func TestProjects_Statuses(t *testing.T) {
 	})
 
 	t.Run("DeleteStatus with active tasks returns ErrConflict", func(t *testing.T) {
-		// taskStore doesn't exist yet; insert via raw SQL to exercise the conflict guard.
 		_, err := sqlDB.ExecContext(ctx,
 			`INSERT INTO tasks (id, project_id, name, status, owner_id, position)
-			 VALUES ('task-conflict-1', ?, 'Blocking Task', 'todo', ?, 0)`,
+			 VALUES ('task-conflict-1', $1, 'Blocking Task', 'todo', $2, 0)`,
 			p.ID, owner.ID,
 		)
 		if err != nil {

@@ -1,6 +1,6 @@
 //go:build integration
 
-package sqlite_test
+package postgres_test
 
 import (
 	"context"

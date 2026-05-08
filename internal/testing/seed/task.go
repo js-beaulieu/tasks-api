@@ -5,12 +5,12 @@ import (
 	"testing"
 
 	"github.com/js-beaulieu/tasks-api/internal/model"
-	"github.com/js-beaulieu/tasks-api/internal/store/sqlite"
+	"github.com/js-beaulieu/tasks-api/internal/store/postgres"
 )
 
 // Task creates a task in the given project owned by ownerID with an optional parentID.
 // Status defaults to "todo". Fatals the test on error.
-func Task(t *testing.T, s *sqlite.Store, projectID, ownerID string, parentID *string) *model.Task {
+func Task(t *testing.T, s *postgres.Store, projectID, ownerID string, parentID *string) *model.Task {
 	t.Helper()
 
 	task := &model.Task{

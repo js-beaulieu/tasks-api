@@ -8,7 +8,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/js-beaulieu/tasks-api/internal/config"
-	testdb "github.com/js-beaulieu/tasks-api/internal/testing/db"
+	"github.com/js-beaulieu/tasks-api/internal/store/postgres"
+	"github.com/js-beaulieu/tasks-api/internal/testing/mock"
 )
 
 func TestHealthHandler(t *testing.T) {
@@ -44,7 +45,7 @@ func TestNewServerHasHealthTool(t *testing.T) {
 }
 
 func TestNewServerWithStore(t *testing.T) {
-	_, store := testdb.Open(t)
+	store := &postgres.Store{Users: &mock.UserRepo{}}
 	s := New(store, config.Config{})
 	if s == nil {
 		t.Fatal("expected non-nil server with store")
@@ -52,7 +53,7 @@ func TestNewServerWithStore(t *testing.T) {
 }
 
 func TestHandler(t *testing.T) {
-	_, store := testdb.Open(t)
+	store := &postgres.Store{Users: &mock.UserRepo{}}
 	h := Handler(store, config.Config{})
 	if h == nil {
 		t.Fatal("expected non-nil http.Handler")

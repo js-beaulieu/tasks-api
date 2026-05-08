@@ -7,11 +7,12 @@ import (
 	"testing"
 
 	"github.com/js-beaulieu/tasks-api/internal/config"
-	testdb "github.com/js-beaulieu/tasks-api/internal/testing/db"
+	"github.com/js-beaulieu/tasks-api/internal/store/postgres"
+	"github.com/js-beaulieu/tasks-api/internal/testing/mock"
 )
 
 func TestNew(t *testing.T) {
-	_, store := testdb.Open(t)
+	store := &postgres.Store{Users: &mock.UserRepo{}}
 	h := New(store, config.Config{})
 
 	t.Run("health is public", func(t *testing.T) {

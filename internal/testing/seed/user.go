@@ -5,11 +5,11 @@ import (
 	"testing"
 
 	"github.com/js-beaulieu/tasks-api/internal/model"
-	"github.com/js-beaulieu/tasks-api/internal/store/sqlite"
+	"github.com/js-beaulieu/tasks-api/internal/store/postgres"
 )
 
 // User creates a user and fatals the test if it fails.
-func User(t *testing.T, s *sqlite.Store, id, name, email string) *model.User {
+func User(t *testing.T, s *postgres.Store, id, name, email string) *model.User {
 	t.Helper()
 
 	u, err := s.Users.Create(context.Background(), id, name, email)

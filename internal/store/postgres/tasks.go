@@ -1,4 +1,4 @@
-package sqlite
+package postgres
 
 import (
 	"context"
@@ -51,7 +51,7 @@ func (s *taskStore) ListChildren(ctx context.Context, projectID string, parentID
 		"t.status, t.due_date, t.owner_id, t.assignee_id, t.position, t.recurrence, t.created_at, t.updated_at " +
 		"FROM tasks t " + joins + where + "ORDER BY t.position"
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.db.QueryContext(ctx, bind(query), args...)
 	if err != nil {
 		return nil, fmt.Errorf("list children: %w", err)
 	}
@@ -73,9 +73,9 @@ func (s *taskStore) ListChildren(ctx context.Context, projectID string, parentID
 func (s *taskStore) Get(ctx context.Context, id string) (*model.Task, error) {
 	logger.FromCtx(ctx).Debug("getting task", "id", id)
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, project_id, parent_id, name, description,
+		bind(`SELECT id, project_id, parent_id, name, description,
 		        status, due_date, owner_id, assignee_id, position, recurrence, created_at, updated_at
-		 FROM tasks WHERE id = ?`, id)
+		 FROM tasks WHERE id = ?`), id)
 	if err != nil {
 		return nil, fmt.Errorf("get task: %w", err)
 	}
@@ -113,9 +113,9 @@ func (s *taskStore) Create(ctx context.Context, t *model.Task) error {
 	// Auto-assign position
 	var pos int
 	err = tx.QueryRowContext(ctx,
-		`SELECT COALESCE(MAX(position), -1) + 1
+		bind(`SELECT COALESCE(MAX(position), -1) + 1
 		 FROM tasks
-		 WHERE project_id = ? AND parent_id IS ?`,
+		 WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ?`),
 		t.ProjectID, t.ParentID,
 	).Scan(&pos)
 	if err != nil {
@@ -124,10 +124,10 @@ func (s *taskStore) Create(ctx context.Context, t *model.Task) error {
 	t.Position = pos
 
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO tasks
+		bind(`INSERT INTO tasks
 		   (id, project_id, parent_id, name, description, status, due_date,
 		    owner_id, assignee_id, position, recurrence)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		t.ID, t.ProjectID, t.ParentID, t.Name, t.Description, t.Status, t.DueDate,
 		t.OwnerID, t.AssigneeID, t.Position, t.Recurrence,
 	)
@@ -157,7 +157,7 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 	var cur model.Task
 	var curParentID sql.NullString
 	err = tx.QueryRowContext(ctx,
-		`SELECT project_id, parent_id, position FROM tasks WHERE id = ?`, t.ID,
+		bind(`SELECT project_id, parent_id, position FROM tasks WHERE id = ?`), t.ID,
 	).Scan(&cur.ProjectID, &curParentID, &cur.Position)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -183,6 +183,20 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 	isMove := t.ProjectID != cur.ProjectID || !parentIDsEqual(newParentID, cur.ParentID)
 
 	if isMove {
+		if targetProjectID != cur.ProjectID {
+			var hasChildren bool
+			err = tx.QueryRowContext(ctx,
+				bind(`SELECT EXISTS (SELECT 1 FROM tasks WHERE parent_id = ?)`),
+				t.ID,
+			).Scan(&hasChildren)
+			if err != nil {
+				return fmt.Errorf("check children: %w", err)
+			}
+			if hasChildren {
+				return repo.ErrConflict
+			}
+		}
+
 		// Cycle guard via recursive CTE
 		if err := checkCycle(ctx, tx, t.ID, newParentID); err != nil {
 			return err
@@ -192,7 +206,7 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 		if newParentID != nil {
 			var parentProject string
 			err = tx.QueryRowContext(ctx,
-				`SELECT project_id FROM tasks WHERE id = ?`, *newParentID,
+				bind(`SELECT project_id FROM tasks WHERE id = ?`), *newParentID,
 			).Scan(&parentProject)
 			if err != nil {
 				if errors.Is(err, sql.ErrNoRows) {
@@ -207,8 +221,8 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 
 		// Compact old sibling group (shift down to fill gap)
 		_, err = tx.ExecContext(ctx,
-			`UPDATE tasks SET position = position - 1
-			 WHERE project_id = ? AND parent_id IS ? AND position > ?`,
+			bind(`UPDATE tasks SET position = position - 1
+			 WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ? AND position > ?`),
 			cur.ProjectID, cur.ParentID, cur.Position,
 		)
 		if err != nil {
@@ -217,8 +231,8 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 
 		// Make room in new sibling group (shift up at target position)
 		_, err = tx.ExecContext(ctx,
-			`UPDATE tasks SET position = position + 1
-			 WHERE project_id = ? AND parent_id IS ? AND position >= ? AND id != ?`,
+			bind(`UPDATE tasks SET position = position + 1
+			 WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ? AND position >= ? AND id != ?`),
 			targetProjectID, newParentID, t.Position, t.ID,
 		)
 		if err != nil {
@@ -232,15 +246,15 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 		if newPos < oldPos {
 			// Moving up: shift others down in [newPos, oldPos)
 			_, err = tx.ExecContext(ctx,
-				`UPDATE tasks SET position = position + 1
-				 WHERE project_id = ? AND parent_id IS ? AND position >= ? AND position < ? AND id != ?`,
+				bind(`UPDATE tasks SET position = position + 1
+				 WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ? AND position >= ? AND position < ? AND id != ?`),
 				cur.ProjectID, cur.ParentID, newPos, oldPos, t.ID,
 			)
 		} else if newPos > oldPos {
 			// Moving down: shift others up in (oldPos, newPos]
 			_, err = tx.ExecContext(ctx,
-				`UPDATE tasks SET position = position - 1
-				 WHERE project_id = ? AND parent_id IS ? AND position > ? AND position <= ? AND id != ?`,
+				bind(`UPDATE tasks SET position = position - 1
+				 WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ? AND position > ? AND position <= ? AND id != ?`),
 				cur.ProjectID, cur.ParentID, oldPos, newPos, t.ID,
 			)
 		}
@@ -261,7 +275,7 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 		"name = ?",
 		"status = ?",
 		"position = ?",
-		"updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')",
+		"updated_at = NOW()",
 	}
 	args := []any{targetProjectID, sqlParentID, t.Name, t.Status, t.Position}
 
@@ -284,7 +298,7 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 
 	args = append(args, t.ID)
 	query := "UPDATE tasks SET " + strings.Join(setClauses, ", ") + " WHERE id = ?"
-	if _, err = tx.ExecContext(ctx, query, args...); err != nil {
+	if _, err = tx.ExecContext(ctx, bind(query), args...); err != nil {
 		return fmt.Errorf("update task: %w", err)
 	}
 
@@ -308,9 +322,9 @@ func (s *taskStore) CompleteTask(ctx context.Context, id, doneStatus string) (*m
 
 	// Load the task to get recurrence, due_date, project_id, etc.
 	rows, err := tx.QueryContext(ctx,
-		`SELECT id, project_id, parent_id, name, description,
+		bind(`SELECT id, project_id, parent_id, name, description,
 		        status, due_date, owner_id, assignee_id, position, recurrence, created_at, updated_at
-		 FROM tasks WHERE id = ?`, id)
+		 FROM tasks WHERE id = ?`), id)
 	if err != nil {
 		return nil, nil, fmt.Errorf("load task: %w", err)
 	}
@@ -336,7 +350,7 @@ func (s *taskStore) CompleteTask(ctx context.Context, id, doneStatus string) (*m
 
 	// Mark the task done.
 	if _, err = tx.ExecContext(ctx,
-		`UPDATE tasks SET status = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`,
+		bind(`UPDATE tasks SET status = ?, updated_at = NOW() WHERE id = ?`),
 		doneStatus, id,
 	); err != nil {
 		return nil, nil, fmt.Errorf("update task status: %w", err)
@@ -361,7 +375,7 @@ func (s *taskStore) CompleteTask(ctx context.Context, id, doneStatus string) (*m
 	// Determine the first status for the project (lowest position).
 	var firstStatus string
 	if err = tx.QueryRowContext(ctx,
-		`SELECT status FROM project_statuses WHERE project_id = ? ORDER BY position LIMIT 1`,
+		bind(`SELECT status FROM project_statuses WHERE project_id = ? ORDER BY position LIMIT 1`),
 		task.ProjectID,
 	).Scan(&firstStatus); err != nil {
 		return nil, nil, fmt.Errorf("get first status: %w", err)
@@ -370,7 +384,7 @@ func (s *taskStore) CompleteTask(ctx context.Context, id, doneStatus string) (*m
 	// Compute position for the new task (appended to top-level siblings).
 	var pos int
 	if err = tx.QueryRowContext(ctx,
-		`SELECT COALESCE(MAX(position), -1) + 1 FROM tasks WHERE project_id = ? AND parent_id IS NULL`,
+		bind(`SELECT COALESCE(MAX(position), -1) + 1 FROM tasks WHERE project_id = ? AND parent_id IS NULL`),
 		task.ProjectID,
 	).Scan(&pos); err != nil {
 		return nil, nil, fmt.Errorf("compute position: %w", err)
@@ -392,10 +406,10 @@ func (s *taskStore) CompleteTask(ctx context.Context, id, doneStatus string) (*m
 	}
 
 	if _, err = tx.ExecContext(ctx,
-		`INSERT INTO tasks
+		bind(`INSERT INTO tasks
 		   (id, project_id, parent_id, name, description, status, due_date,
 		    owner_id, assignee_id, position, recurrence)
-		 VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		newTask.ID, newTask.ProjectID, newTask.Name, newTask.Description,
 		newTask.Status, newTask.DueDate, newTask.OwnerID, newTask.AssigneeID,
 		newTask.Position, newTask.Recurrence,
@@ -405,7 +419,9 @@ func (s *taskStore) CompleteTask(ctx context.Context, id, doneStatus string) (*m
 
 	// Copy tags from the original task.
 	if _, err = tx.ExecContext(ctx,
-		`INSERT OR IGNORE INTO task_tags (task_id, tag) SELECT ?, tag FROM task_tags WHERE task_id = ?`,
+		bind(`INSERT INTO task_tags (task_id, tag)
+		SELECT ?, tag FROM task_tags WHERE task_id = ?
+		ON CONFLICT DO NOTHING`),
 		newID, id,
 	); err != nil {
 		return nil, nil, fmt.Errorf("copy tags: %w", err)
@@ -417,9 +433,9 @@ func (s *taskStore) CompleteTask(ctx context.Context, id, doneStatus string) (*m
 
 	// Re-fetch the new task so timestamps are populated.
 	createdRows, err := s.db.QueryContext(ctx,
-		`SELECT id, project_id, parent_id, name, description,
+		bind(`SELECT id, project_id, parent_id, name, description,
 		        status, due_date, owner_id, assignee_id, position, recurrence, created_at, updated_at
-		 FROM tasks WHERE id = ?`, newID)
+		 FROM tasks WHERE id = ?`), newID)
 	if err != nil {
 		return task, newTask, nil // best-effort if re-fetch fails
 	}
@@ -437,7 +453,7 @@ func (s *taskStore) CompleteTask(ctx context.Context, id, doneStatus string) (*m
 // Delete removes a task by ID. The DB CASCADE removes subtasks and tags.
 func (s *taskStore) Delete(ctx context.Context, id string) error {
 	logger.FromCtx(ctx).Debug("deleting task", "id", id)
-	_, err := s.db.ExecContext(ctx, `DELETE FROM tasks WHERE id = ?`, id)
+	_, err := s.db.ExecContext(ctx, bind(`DELETE FROM tasks WHERE id = ?`), id)
 	if err != nil {
 		return fmt.Errorf("delete task: %w", err)
 	}
@@ -450,7 +466,7 @@ func (s *taskStore) Delete(ctx context.Context, id string) error {
 func validateStatus(ctx context.Context, tx *sql.Tx, projectID, status string) error {
 	var count int
 	err := tx.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM project_statuses WHERE project_id = ? AND status = ?`,
+		bind(`SELECT COUNT(*) FROM project_statuses WHERE project_id = ? AND status = ?`),
 		projectID, status,
 	).Scan(&count)
 	if err != nil {
@@ -473,13 +489,13 @@ func checkCycle(ctx context.Context, tx *sql.Tx, taskID string, newParentID *str
 	}
 
 	// Walk descendants of taskID — if newParentID appears among them, it's a cycle.
-	rows, err := tx.QueryContext(ctx, `
+	rows, err := tx.QueryContext(ctx, bind(`
 		WITH RECURSIVE descendants(id) AS (
 			SELECT id FROM tasks WHERE parent_id = ?
 			UNION ALL
 			SELECT t.id FROM tasks t JOIN descendants d ON t.parent_id = d.id
 		)
-		SELECT id FROM descendants WHERE id = ?`, taskID, *newParentID)
+		SELECT id FROM descendants WHERE id = ?`), taskID, *newParentID)
 	if err != nil {
 		return fmt.Errorf("cycle check: %w", err)
 	}

@@ -12,10 +12,10 @@ import (
 	"github.com/js-beaulieu/tasks-api/internal/config"
 	"github.com/js-beaulieu/tasks-api/internal/logger"
 	"github.com/js-beaulieu/tasks-api/internal/mcpserver/tools"
-	"github.com/js-beaulieu/tasks-api/internal/store/sqlite"
+	"github.com/js-beaulieu/tasks-api/internal/store/postgres"
 )
 
-func New(store *sqlite.Store, cfg config.Config) *mcp.Server {
+func New(store *postgres.Store, cfg config.Config) *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{
 		Name:    "tasks-api",
 		Version: "1.0.0",
@@ -43,7 +43,7 @@ func New(store *sqlite.Store, cfg config.Config) *mcp.Server {
 	return s
 }
 
-func Handler(store *sqlite.Store, cfg config.Config) http.Handler {
+func Handler(store *postgres.Store, cfg config.Config) http.Handler {
 	s := New(store, cfg)
 	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return s

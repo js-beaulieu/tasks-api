@@ -1,4 +1,4 @@
-package sqlite
+package postgres
 
 import (
 	"context"
@@ -19,13 +19,13 @@ type projectStore struct{ db *sql.DB }
 // List returns all projects where userID is the owner or an explicit member.
 func (s *projectStore) List(ctx context.Context, userID string) ([]*model.Project, error) {
 	logger.FromCtx(ctx).Debug("listing projects", "user_id", userID)
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.db.QueryContext(ctx, bind(`
 		SELECT DISTINCT p.id, p.name, p.description, p.due_date,
 		                p.owner_id, p.assignee_id, p.created_at, p.updated_at
 		FROM projects p
 		LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
 		WHERE p.owner_id = ? OR pm.user_id = ?
-		ORDER BY p.created_at DESC`,
+		ORDER BY p.created_at DESC`),
 		userID, userID, userID,
 	)
 	if err != nil {
@@ -48,10 +48,10 @@ func (s *projectStore) List(ctx context.Context, userID string) ([]*model.Projec
 // Get fetches a single project by ID. Returns repo.ErrNotFound if absent.
 func (s *projectStore) Get(ctx context.Context, id string) (*model.Project, error) {
 	logger.FromCtx(ctx).Debug("getting project", "id", id)
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.db.QueryContext(ctx, bind(`
 		SELECT id, name, description, due_date,
 		       owner_id, assignee_id, created_at, updated_at
-		FROM projects WHERE id = ?`, id)
+		FROM projects WHERE id = ?`), id)
 	if err != nil {
 		return nil, fmt.Errorf("get project: %w", err)
 	}
@@ -82,9 +82,9 @@ func (s *projectStore) Create(ctx context.Context, p *model.Project, additionalS
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	_, err = tx.ExecContext(ctx, `
+	_, err = tx.ExecContext(ctx, bind(`
 		INSERT INTO projects (id, name, description, due_date, owner_id, assignee_id)
-		VALUES (?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?)`),
 		p.ID, p.Name, p.Description, p.DueDate, p.OwnerID, p.AssigneeID,
 	)
 	if err != nil {
@@ -93,7 +93,7 @@ func (s *projectStore) Create(ctx context.Context, p *model.Project, additionalS
 
 	for i, status := range model.DefaultStatuses {
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO project_statuses (project_id, status, position) VALUES (?, ?, ?)`,
+			bind(`INSERT INTO project_statuses (project_id, status, position) VALUES (?, ?, ?)`),
 			p.ID, status, i,
 		)
 		if err != nil {
@@ -110,8 +110,9 @@ func (s *projectStore) Create(ctx context.Context, p *model.Project, additionalS
 		if defaults[status] {
 			continue
 		}
+		defaults[status] = true
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO project_statuses (project_id, status, position) VALUES (?, ?, ?)`,
+			bind(`INSERT INTO project_statuses (project_id, status, position) VALUES (?, ?, ?)`),
 			p.ID, status, pos,
 		)
 		if err != nil {
@@ -133,7 +134,7 @@ func (s *projectStore) Create(ctx context.Context, p *model.Project, additionalS
 // are only updated when non-nil. updated_at is always refreshed.
 func (s *projectStore) Update(ctx context.Context, p *model.Project) error {
 	logger.FromCtx(ctx).Debug("updating project", "id", p.ID)
-	setClauses := []string{"name = ?", "updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')"}
+	setClauses := []string{"name = ?", "updated_at = NOW()"}
 	args := []any{p.Name}
 
 	if p.Description != nil {
@@ -152,7 +153,7 @@ func (s *projectStore) Update(ctx context.Context, p *model.Project) error {
 	args = append(args, p.ID)
 	query := "UPDATE projects SET " + strings.Join(setClauses, ", ") + " WHERE id = ?"
 
-	_, err := s.db.ExecContext(ctx, query, args...)
+	_, err := s.db.ExecContext(ctx, bind(query), args...)
 	if err != nil {
 		return fmt.Errorf("update project: %w", err)
 	}
@@ -163,7 +164,7 @@ func (s *projectStore) Update(ctx context.Context, p *model.Project) error {
 // Delete removes a project by ID. Cascade handles members, statuses, and tasks.
 func (s *projectStore) Delete(ctx context.Context, id string) error {
 	logger.FromCtx(ctx).Debug("deleting project", "id", id)
-	_, err := s.db.ExecContext(ctx, `DELETE FROM projects WHERE id = ?`, id)
+	_, err := s.db.ExecContext(ctx, bind(`DELETE FROM projects WHERE id = ?`), id)
 	if err != nil {
 		return fmt.Errorf("delete project: %w", err)
 	}
@@ -178,7 +179,7 @@ func (s *projectStore) GetMemberRole(ctx context.Context, projectID, userID stri
 	logger.FromCtx(ctx).Debug("getting member role", "project_id", projectID, "user_id", userID)
 	var ownerID string
 	err := s.db.QueryRowContext(ctx,
-		`SELECT owner_id FROM projects WHERE id = ?`, projectID,
+		bind(`SELECT owner_id FROM projects WHERE id = ?`), projectID,
 	).Scan(&ownerID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -194,7 +195,7 @@ func (s *projectStore) GetMemberRole(ctx context.Context, projectID, userID stri
 
 	var role string
 	err = s.db.QueryRowContext(ctx,
-		`SELECT role FROM project_members WHERE project_id = ? AND user_id = ?`,
+		bind(`SELECT role FROM project_members WHERE project_id = ? AND user_id = ?`),
 		projectID, userID,
 	).Scan(&role)
 	if err != nil {
@@ -211,7 +212,7 @@ func (s *projectStore) GetMemberRole(ctx context.Context, projectID, userID stri
 func (s *projectStore) ListMembers(ctx context.Context, projectID string) ([]*model.ProjectMember, error) {
 	logger.FromCtx(ctx).Debug("listing members", "project_id", projectID)
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT project_id, user_id, role FROM project_members WHERE project_id = ?`,
+		bind(`SELECT project_id, user_id, role FROM project_members WHERE project_id = ?`),
 		projectID,
 	)
 	if err != nil {
@@ -235,7 +236,7 @@ func (s *projectStore) ListMembers(ctx context.Context, projectID string) ([]*mo
 func (s *projectStore) AddMember(ctx context.Context, m *model.ProjectMember) error {
 	logger.FromCtx(ctx).Debug("adding member", "project_id", m.ProjectID, "user_id", m.UserID, "role", m.Role)
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO project_members (project_id, user_id, role) VALUES (?, ?, ?)`,
+		bind(`INSERT INTO project_members (project_id, user_id, role) VALUES (?, ?, ?)`),
 		m.ProjectID, m.UserID, m.Role,
 	)
 	if err != nil {
@@ -252,7 +253,7 @@ func (s *projectStore) AddMember(ctx context.Context, m *model.ProjectMember) er
 func (s *projectStore) UpdateMemberRole(ctx context.Context, projectID, userID, role string) error {
 	logger.FromCtx(ctx).Debug("updating member role", "project_id", projectID, "user_id", userID, "role", role)
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE project_members SET role = ? WHERE project_id = ? AND user_id = ?`,
+		bind(`UPDATE project_members SET role = ? WHERE project_id = ? AND user_id = ?`),
 		role, projectID, userID,
 	)
 	if err != nil {
@@ -266,7 +267,7 @@ func (s *projectStore) UpdateMemberRole(ctx context.Context, projectID, userID, 
 func (s *projectStore) RemoveMember(ctx context.Context, projectID, userID string) error {
 	logger.FromCtx(ctx).Debug("removing member", "project_id", projectID, "user_id", userID)
 	_, err := s.db.ExecContext(ctx,
-		`DELETE FROM project_members WHERE project_id = ? AND user_id = ?`,
+		bind(`DELETE FROM project_members WHERE project_id = ? AND user_id = ?`),
 		projectID, userID,
 	)
 	if err != nil {
@@ -280,8 +281,8 @@ func (s *projectStore) RemoveMember(ctx context.Context, projectID, userID strin
 func (s *projectStore) ListStatuses(ctx context.Context, projectID string) ([]*model.ProjectStatus, error) {
 	logger.FromCtx(ctx).Debug("listing statuses", "project_id", projectID)
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT project_id, status, position FROM project_statuses
-		 WHERE project_id = ? ORDER BY position`,
+		bind(`SELECT project_id, status, position FROM project_statuses
+		 WHERE project_id = ? ORDER BY position`),
 		projectID,
 	)
 	if err != nil {
@@ -313,7 +314,7 @@ func (s *projectStore) AddStatus(ctx context.Context, projectID, status string) 
 
 	var newPos int
 	err = tx.QueryRowContext(ctx,
-		`SELECT COALESCE(MAX(position)+1, 0) FROM project_statuses WHERE project_id = ?`,
+		bind(`SELECT COALESCE(MAX(position)+1, 0) FROM project_statuses WHERE project_id = ?`),
 		projectID,
 	).Scan(&newPos)
 	if err != nil {
@@ -321,10 +322,13 @@ func (s *projectStore) AddStatus(ctx context.Context, projectID, status string) 
 	}
 
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO project_statuses (project_id, status, position) VALUES (?, ?, ?)`,
+		bind(`INSERT INTO project_statuses (project_id, status, position) VALUES (?, ?, ?)`),
 		projectID, status, newPos,
 	)
 	if err != nil {
+		if isUniqueConstraint(err) {
+			return repo.ErrConflict
+		}
 		return fmt.Errorf("insert status: %w", err)
 	}
 
@@ -347,7 +351,7 @@ func (s *projectStore) DeleteStatus(ctx context.Context, projectID, status strin
 
 	var count int
 	err = tx.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = ?`,
+		bind(`SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = ?`),
 		projectID, status,
 	).Scan(&count)
 	if err != nil {
@@ -358,7 +362,7 @@ func (s *projectStore) DeleteStatus(ctx context.Context, projectID, status strin
 	}
 
 	_, err = tx.ExecContext(ctx,
-		`DELETE FROM project_statuses WHERE project_id = ? AND status = ?`,
+		bind(`DELETE FROM project_statuses WHERE project_id = ? AND status = ?`),
 		projectID, status,
 	)
 	if err != nil {
@@ -383,14 +387,4 @@ func scanProject(rows *sql.Rows) (*model.Project, error) {
 		return nil, fmt.Errorf("scan project: %w", err)
 	}
 	return &p, nil
-}
-
-// isUniqueConstraint reports whether err is a SQLite UNIQUE constraint violation.
-func isUniqueConstraint(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
-}
-
-// isForeignKeyConstraint reports whether err is a SQLite FOREIGN KEY constraint violation.
-func isForeignKeyConstraint(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "FOREIGN KEY constraint failed")
 }
