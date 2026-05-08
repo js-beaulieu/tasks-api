@@ -82,7 +82,7 @@ func CallTool(t *testing.T, env *Env, name string, args any) *mcp.CallToolResult
 	return result
 }
 
-func DecodeStructured[T any](t *testing.T, result *mcp.CallToolResult) T {
+func Decode[T any](t *testing.T, result *mcp.CallToolResult) T {
 	t.Helper()
 
 	var out T
@@ -97,21 +97,6 @@ func DecodeStructured[T any](t *testing.T, result *mcp.CallToolResult) T {
 		t.Fatalf("decode structured content: %v; content: %s", err, data)
 	}
 	return out
-}
-
-func TextJSON(t *testing.T, result *mcp.CallToolResult, v any) {
-	t.Helper()
-
-	if len(result.Content) == 0 {
-		t.Fatal("content is empty")
-	}
-	text, ok := result.Content[0].(*mcp.TextContent)
-	if !ok {
-		t.Fatalf("content[0] = %T, want *mcp.TextContent", result.Content[0])
-	}
-	if err := json.Unmarshal([]byte(text.Text), v); err != nil {
-		t.Fatalf("decode text JSON: %v; text: %s", err, text.Text)
-	}
 }
 
 type userIDTransport struct {

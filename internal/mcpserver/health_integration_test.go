@@ -12,8 +12,7 @@ func TestMCPHealthIntegration(t *testing.T) {
 	env := mcptest.NewEnv(t)
 
 	result := mcptest.CallTool(t, env, "health", nil)
-	var body map[string]string
-	mcptest.TextJSON(t, result, &body)
+	body := mcptest.Decode[map[string]string](t, result)
 	if body["status"] != "ok" {
 		t.Fatalf("status = %q, want ok", body["status"])
 	}

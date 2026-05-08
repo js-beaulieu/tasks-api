@@ -20,7 +20,7 @@ func TestMCPTagsIntegration_ListTags(t *testing.T) {
 	})
 
 	result := mcptest.CallTool(t, env, "list_tags", nil)
-	list := mcptest.DecodeStructured[struct {
+	list := mcptest.Decode[struct {
 		Tags []string `json:"tags"`
 	}](t, result)
 	if len(list.Tags) != 1 || list.Tags[0] != "backend" {

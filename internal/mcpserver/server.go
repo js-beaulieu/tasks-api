@@ -50,12 +50,12 @@ func Handler(store *postgres.Store, cfg config.Config) http.Handler {
 	}, nil)
 }
 
-func healthHandler(_ context.Context, _ *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, any, error) {
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: `{"status":"ok"}`},
-		},
-	}, nil, nil
+type healthResult struct {
+	Status string `json:"status"`
+}
+
+func healthHandler(_ context.Context, _ *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, *healthResult, error) {
+	return nil, &healthResult{Status: "ok"}, nil
 }
 
 func withLogging[I, O any](name string, cfg config.Config, h mcp.ToolHandlerFor[I, O]) mcp.ToolHandlerFor[I, O] {

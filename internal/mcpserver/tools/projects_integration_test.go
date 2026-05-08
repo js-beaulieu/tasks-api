@@ -18,10 +18,10 @@ func TestMCPProjectsIntegration_CreateListGetUpdate(t *testing.T) {
 		"due_date":    "2026-06-01",
 		"statuses":    []string{"review"},
 	})
-	project := mcptest.DecodeStructured[model.Project](t, createResult)
+	project := mcptest.Decode[model.Project](t, createResult)
 
 	listResult := mcptest.CallTool(t, env, "list_projects", nil)
-	list := mcptest.DecodeStructured[struct {
+	list := mcptest.Decode[struct {
 		Projects []*model.Project `json:"projects"`
 	}](t, listResult)
 	if !containsProject(list.Projects, project.ID) {
@@ -29,7 +29,7 @@ func TestMCPProjectsIntegration_CreateListGetUpdate(t *testing.T) {
 	}
 
 	getResult := mcptest.CallTool(t, env, "get_project", map[string]any{"project_id": project.ID})
-	got := mcptest.DecodeStructured[model.Project](t, getResult)
+	got := mcptest.Decode[model.Project](t, getResult)
 	if got.ID != project.ID {
 		t.Fatalf("get_project ID = %q, want %q", got.ID, project.ID)
 	}
@@ -39,7 +39,7 @@ func TestMCPProjectsIntegration_CreateListGetUpdate(t *testing.T) {
 		"name":         "Updated MCP Project",
 		"add_statuses": []string{"qa"},
 	})
-	updated := mcptest.DecodeStructured[model.Project](t, updateResult)
+	updated := mcptest.Decode[model.Project](t, updateResult)
 	if updated.Name != "Updated MCP Project" {
 		t.Fatalf("updated project name = %q, want Updated MCP Project", updated.Name)
 	}

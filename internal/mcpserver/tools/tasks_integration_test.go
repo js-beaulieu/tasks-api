@@ -21,10 +21,10 @@ func TestMCPTasksIntegration_CreateListGetUpdateAndComplete(t *testing.T) {
 		"status":      "todo",
 		"due_date":    "2026-06-02",
 	})
-	task := mcptest.DecodeStructured[model.Task](t, createResult)
+	task := mcptest.Decode[model.Task](t, createResult)
 
 	listResult := mcptest.CallTool(t, env, "list_tasks", map[string]any{"project_id": project.ID})
-	list := mcptest.DecodeStructured[struct {
+	list := mcptest.Decode[struct {
 		Tasks []*model.Task `json:"tasks"`
 	}](t, listResult)
 	if !containsTask(list.Tasks, task.ID) {
@@ -32,7 +32,7 @@ func TestMCPTasksIntegration_CreateListGetUpdateAndComplete(t *testing.T) {
 	}
 
 	getResult := mcptest.CallTool(t, env, "get_task", map[string]any{"task_id": task.ID})
-	got := mcptest.DecodeStructured[model.Task](t, getResult)
+	got := mcptest.Decode[model.Task](t, getResult)
 	if got.ID != task.ID {
 		t.Fatalf("get_task ID = %q, want %q", got.ID, task.ID)
 	}
@@ -43,7 +43,7 @@ func TestMCPTasksIntegration_CreateListGetUpdateAndComplete(t *testing.T) {
 		"status":   "in_progress",
 		"add_tags": []string{"backend"},
 	})
-	updated := mcptest.DecodeStructured[struct {
+	updated := mcptest.Decode[struct {
 		*model.Task
 		Tags []string `json:"tags"`
 	}](t, updateResult)
@@ -78,7 +78,7 @@ func TestMCPTasksIntegration_CreateListGetUpdateAndComplete(t *testing.T) {
 		"task_id":     recurring.ID,
 		"done_status": "done",
 	})
-	completed := mcptest.DecodeStructured[struct {
+	completed := mcptest.Decode[struct {
 		Completed *model.Task `json:"completed"`
 		Next      *model.Task `json:"next"`
 	}](t, completeResult)
@@ -104,10 +104,10 @@ func TestMCPTasksIntegration_CreateAndListSubtasks(t *testing.T) {
 		"name":       "Test Task",
 		"status":     "todo",
 	})
-	subtask := mcptest.DecodeStructured[model.Task](t, createResult)
+	subtask := mcptest.Decode[model.Task](t, createResult)
 
 	listResult := mcptest.CallTool(t, env, "list_tasks", map[string]any{"parent_id": task.ID})
-	list := mcptest.DecodeStructured[struct {
+	list := mcptest.Decode[struct {
 		Tasks []*model.Task `json:"tasks"`
 	}](t, listResult)
 	if !containsTask(list.Tasks, subtask.ID) {
