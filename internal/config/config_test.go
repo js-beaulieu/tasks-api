@@ -4,19 +4,21 @@ import (
 	"testing"
 )
 
-func TestLoadDBPath(t *testing.T) {
-	t.Run("defaults to tasks.db when DB_PATH unset", func(t *testing.T) {
+func TestLoadPGConnectionString(t *testing.T) {
+	t.Run("defaults to local postgres when PG_CONNECTION_STRING unset", func(t *testing.T) {
 		cfg := Load()
-		if cfg.DBPath != "tasks.db" {
-			t.Errorf("DBPath = %q, want tasks.db", cfg.DBPath)
+		want := "postgres://postgres:postgres@localhost:5432/tasks_api?sslmode=disable"
+		if cfg.PGConnectionString != want {
+			t.Errorf("PGConnectionString = %q, want %q", cfg.PGConnectionString, want)
 		}
 	})
 
-	t.Run("reads DB_PATH from env", func(t *testing.T) {
-		t.Setenv("DB_PATH", "/data/tasks.db")
+	t.Run("reads PG_CONNECTION_STRING from env", func(t *testing.T) {
+		t.Setenv("PG_CONNECTION_STRING", "postgres://app:secret@db:5432/tasks_api?sslmode=disable")
 		cfg := Load()
-		if cfg.DBPath != "/data/tasks.db" {
-			t.Errorf("DBPath = %q, want /data/tasks.db", cfg.DBPath)
+		want := "postgres://app:secret@db:5432/tasks_api?sslmode=disable"
+		if cfg.PGConnectionString != want {
+			t.Errorf("PGConnectionString = %q, want %q", cfg.PGConnectionString, want)
 		}
 	})
 }

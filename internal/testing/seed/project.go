@@ -5,17 +5,35 @@ import (
 	"testing"
 
 	"github.com/js-beaulieu/tasks-api/internal/model"
-	"github.com/js-beaulieu/tasks-api/internal/store/sqlite"
+	"github.com/js-beaulieu/tasks-api/internal/store/postgres"
 )
 
-// Project creates a project owned by ownerID and fatals the test if it fails.
-func Project(t *testing.T, s *sqlite.Store, ownerID string) *model.Project {
+type ProjectInput struct {
+	Name               string
+	Description        *string
+	DueDate            *string
+	OwnerID            string
+	AssigneeID         *string
+	AdditionalStatuses []string
+}
+
+// Project creates a project in Postgres and fatals on error.
+func Project(t *testing.T, s *postgres.Store, in ProjectInput) *model.Project {
 	t.Helper()
 
-	p := &model.Project{Name: "Test Project", OwnerID: ownerID}
-	if err := s.Projects.Create(context.Background(), p); err != nil {
-		t.Fatalf("seed.Project: %v", err)
+	if in.Name == "" {
+		in.Name = "Test Project"
 	}
 
+	p := &model.Project{
+		Name:        in.Name,
+		Description: in.Description,
+		DueDate:     in.DueDate,
+		OwnerID:     in.OwnerID,
+		AssigneeID:  in.AssigneeID,
+	}
+	if err := s.Projects.Create(context.Background(), p, in.AdditionalStatuses...); err != nil {
+		t.Fatalf("seed.Project: %v", err)
+	}
 	return p
 }

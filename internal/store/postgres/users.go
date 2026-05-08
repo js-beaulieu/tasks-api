@@ -1,4 +1,4 @@
-package sqlite
+package postgres
 
 import (
 	"context"
@@ -19,7 +19,7 @@ type userStore struct {
 func (s *userStore) GetByID(ctx context.Context, id string) (*model.User, error) {
 	logger.FromCtx(ctx).Debug("getting user", "id", id)
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, name, email, created_at FROM users WHERE id = ?`, id)
+		bind(`SELECT id, name, email, created_at FROM users WHERE id = ?`), id)
 	u, err := scanUser(row)
 	if err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
@@ -36,7 +36,7 @@ func (s *userStore) GetByID(ctx context.Context, id string) (*model.User, error)
 func (s *userStore) Create(ctx context.Context, id, name, email string) (*model.User, error) {
 	logger.FromCtx(ctx).Debug("creating user", "id", id)
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO users (id, name, email) VALUES (?, ?, ?)`,
+		bind(`INSERT INTO users (id, name, email) VALUES (?, ?, ?)`),
 		id, name, email)
 	if err != nil {
 		if isUniqueConstraint(err) {
@@ -54,7 +54,7 @@ func (s *userStore) Create(ctx context.Context, id, name, email string) (*model.
 func (s *userStore) Update(ctx context.Context, u *model.User) error {
 	logger.FromCtx(ctx).Debug("updating user", "id", u.ID)
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE users SET name = ?, email = ? WHERE id = ?`,
+		bind(`UPDATE users SET name = ?, email = ? WHERE id = ?`),
 		u.Name, u.Email, u.ID)
 	if err != nil {
 		if isUniqueConstraint(err) {
@@ -78,7 +78,7 @@ func (s *userStore) Update(ctx context.Context, u *model.User) error {
 // Returns repo.ErrConflict if the user still owns projects or tasks (FK RESTRICT).
 func (s *userStore) Delete(ctx context.Context, id string) error {
 	logger.FromCtx(ctx).Debug("deleting user", "id", id)
-	res, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, id)
+	res, err := s.db.ExecContext(ctx, bind(`DELETE FROM users WHERE id = ?`), id)
 	if err != nil {
 		if isForeignKeyConstraint(err) {
 			return repo.ErrConflict

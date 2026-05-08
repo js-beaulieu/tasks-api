@@ -1,6 +1,6 @@
 //go:build integration
 
-package sqlite_test
+package postgres_test
 
 import (
 	"context"
@@ -19,7 +19,7 @@ func TestCreateProject_AdditionalStatuses(t *testing.T) {
 
 	t.Run("no extra statuses seeds exactly 4 defaults", func(t *testing.T) {
 		_, store := testdb.Open(t)
-		owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
+		owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
 		p := &model.Project{Name: "P1", OwnerID: owner.ID}
 		if err := store.Projects.Create(ctx, p); err != nil {
 			t.Fatalf("Create: %v", err)
@@ -43,7 +43,7 @@ func TestCreateProject_AdditionalStatuses(t *testing.T) {
 
 	t.Run("extra statuses appended after defaults", func(t *testing.T) {
 		_, store := testdb.Open(t)
-		owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
+		owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
 		p := &model.Project{Name: "P2", OwnerID: owner.ID}
 		if err := store.Projects.Create(ctx, p, "À faire", "En cours"); err != nil {
 			t.Fatalf("Create: %v", err)
@@ -66,7 +66,7 @@ func TestCreateProject_AdditionalStatuses(t *testing.T) {
 
 	t.Run("extra status duplicating a default is silently skipped", func(t *testing.T) {
 		_, store := testdb.Open(t)
-		owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
+		owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
 		p := &model.Project{Name: "P3", OwnerID: owner.ID}
 		if err := store.Projects.Create(ctx, p, "todo", "extra"); err != nil {
 			t.Fatalf("Create: %v", err)
@@ -90,7 +90,7 @@ func TestCreateProject_AdditionalStatuses(t *testing.T) {
 func TestProjects_CreateGet(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
 
 	desc := "a nice project"
 	due := "2026-12-31"
@@ -145,9 +145,9 @@ func TestProjects_Get_NotFound(t *testing.T) {
 func TestProjects_List(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Owner", "owner@test.com")
-	outsider := seed.User(t, store, "u2", "Outsider", "out@test.com")
-	p := seed.Project(t, store, owner.ID)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Owner", Email: "owner@test.com"})
+	outsider := seed.User(t, store, seed.UserInput{ID: "u2", Name: "Outsider", Email: "out@test.com"})
+	p := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
 
 	t.Run("owner sees project", func(t *testing.T) {
 		list, err := store.Projects.List(ctx, owner.ID)
@@ -181,7 +181,7 @@ func TestProjects_List(t *testing.T) {
 func TestProjects_Update(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Owner", "owner@test.com")
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Owner", Email: "owner@test.com"})
 
 	desc := "original description"
 	p := &model.Project{Name: "Original", Description: &desc, OwnerID: owner.ID}
@@ -228,8 +228,8 @@ func TestProjects_Update(t *testing.T) {
 func TestProjects_Delete(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Owner", "owner@test.com")
-	p := seed.Project(t, store, owner.ID)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Owner", Email: "owner@test.com"})
+	p := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
 
 	if err := store.Projects.Delete(ctx, p.ID); err != nil {
 		t.Fatalf("Delete: %v", err)
@@ -246,9 +246,9 @@ func TestProjects_Delete(t *testing.T) {
 func TestProjects_GetMemberRole(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Owner", "owner@test.com")
-	outsider := seed.User(t, store, "u2", "Outsider", "out@test.com")
-	p := seed.Project(t, store, owner.ID)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Owner", Email: "owner@test.com"})
+	outsider := seed.User(t, store, seed.UserInput{ID: "u2", Name: "Outsider", Email: "out@test.com"})
+	p := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
 
 	t.Run("owner returns admin without project_members row", func(t *testing.T) {
 		role, err := store.Projects.GetMemberRole(ctx, p.ID, owner.ID)
@@ -273,11 +273,11 @@ func TestProjects_GetMemberRole(t *testing.T) {
 func TestProjects_Members(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Owner", "owner@test.com")
-	p := seed.Project(t, store, owner.ID)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Owner", Email: "owner@test.com"})
+	p := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
 
 	t.Run("AddMember then role visible via GetMemberRole", func(t *testing.T) {
-		userA := seed.User(t, store, "u2", "UserA", "a@test.com")
+		userA := seed.User(t, store, seed.UserInput{ID: "u2", Name: "UserA", Email: "a@test.com"})
 		m := &model.ProjectMember{ProjectID: p.ID, UserID: userA.ID, Role: model.RoleRead}
 		if err := store.Projects.AddMember(ctx, m); err != nil {
 			t.Fatalf("AddMember: %v", err)
@@ -292,7 +292,7 @@ func TestProjects_Members(t *testing.T) {
 	})
 
 	t.Run("UpdateMemberRole changes role", func(t *testing.T) {
-		userB := seed.User(t, store, "u3", "UserB", "b@test.com")
+		userB := seed.User(t, store, seed.UserInput{ID: "u3", Name: "UserB", Email: "b@test.com"})
 		if err := store.Projects.AddMember(ctx, &model.ProjectMember{ProjectID: p.ID, UserID: userB.ID, Role: model.RoleRead}); err != nil {
 			t.Fatalf("AddMember: %v", err)
 		}
@@ -309,7 +309,7 @@ func TestProjects_Members(t *testing.T) {
 	})
 
 	t.Run("RemoveMember returns ErrNoAccess afterwards", func(t *testing.T) {
-		userC := seed.User(t, store, "u4", "UserC", "c@test.com")
+		userC := seed.User(t, store, seed.UserInput{ID: "u4", Name: "UserC", Email: "c@test.com"})
 		if err := store.Projects.AddMember(ctx, &model.ProjectMember{ProjectID: p.ID, UserID: userC.ID, Role: model.RoleRead}); err != nil {
 			t.Fatalf("AddMember: %v", err)
 		}
@@ -323,7 +323,7 @@ func TestProjects_Members(t *testing.T) {
 	})
 
 	t.Run("AddMember duplicate returns ErrConflict", func(t *testing.T) {
-		userD := seed.User(t, store, "u5", "UserD", "d@test.com")
+		userD := seed.User(t, store, seed.UserInput{ID: "u5", Name: "UserD", Email: "d@test.com"})
 		m := &model.ProjectMember{ProjectID: p.ID, UserID: userD.ID, Role: model.RoleRead}
 		if err := store.Projects.AddMember(ctx, m); err != nil {
 			t.Fatalf("first AddMember: %v", err)
@@ -334,7 +334,7 @@ func TestProjects_Members(t *testing.T) {
 	})
 
 	t.Run("ListMembers includes added member", func(t *testing.T) {
-		userE := seed.User(t, store, "u6", "UserE", "e@test.com")
+		userE := seed.User(t, store, seed.UserInput{ID: "u6", Name: "UserE", Email: "e@test.com"})
 		if err := store.Projects.AddMember(ctx, &model.ProjectMember{ProjectID: p.ID, UserID: userE.ID, Role: model.RoleModify}); err != nil {
 			t.Fatalf("AddMember: %v", err)
 		}
@@ -362,8 +362,8 @@ func TestProjects_Members(t *testing.T) {
 func TestProjects_Statuses(t *testing.T) {
 	sqlDB, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Owner", "owner@test.com")
-	p := seed.Project(t, store, owner.ID)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Owner", Email: "owner@test.com"})
+	p := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
 
 	t.Run("all 4 defaults seeded on Create", func(t *testing.T) {
 		statuses, err := store.Projects.ListStatuses(ctx, p.ID)
@@ -411,13 +411,17 @@ func TestProjects_Statuses(t *testing.T) {
 				t.Error("deleted status 'review' still present")
 			}
 		}
+		for i, s := range statuses {
+			if s.Position != i {
+				t.Fatalf("status %q position = %d, want %d", s.Status, s.Position, i)
+			}
+		}
 	})
 
 	t.Run("DeleteStatus with active tasks returns ErrConflict", func(t *testing.T) {
-		// taskStore doesn't exist yet; insert via raw SQL to exercise the conflict guard.
 		_, err := sqlDB.ExecContext(ctx,
 			`INSERT INTO tasks (id, project_id, name, status, owner_id, position)
-			 VALUES ('task-conflict-1', ?, 'Blocking Task', 'todo', ?, 0)`,
+			 VALUES ('task-conflict-1', $1, 'Blocking Task', 'todo', $2, 0)`,
 			p.ID, owner.ID,
 		)
 		if err != nil {

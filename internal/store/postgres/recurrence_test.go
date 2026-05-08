@@ -1,6 +1,4 @@
-//go:build integration
-
-package sqlite
+package postgres
 
 import (
 	"testing"

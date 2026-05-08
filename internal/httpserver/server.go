@@ -12,10 +12,10 @@ import (
 	taghandler "github.com/js-beaulieu/tasks-api/internal/httpserver/tags"
 	taskhandler "github.com/js-beaulieu/tasks-api/internal/httpserver/tasks"
 	"github.com/js-beaulieu/tasks-api/internal/httpserver/users"
-	"github.com/js-beaulieu/tasks-api/internal/store/sqlite"
+	"github.com/js-beaulieu/tasks-api/internal/store/postgres"
 )
 
-func New(store *sqlite.Store, cfg config.Config) http.Handler {
+func New(store *postgres.Store, cfg config.Config) http.Handler {
 	r := chi.NewRouter()
 
 	r.Get("/health", healthHandler)

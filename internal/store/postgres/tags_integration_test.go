@@ -1,6 +1,6 @@
 //go:build integration
 
-package sqlite_test
+package postgres_test
 
 import (
 	"context"
@@ -14,9 +14,9 @@ import (
 func TestTags_AddListForTask(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
-	proj := seed.Project(t, store, owner.ID)
-	task := seed.Task(t, store, proj.ID, owner.ID, nil)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+	task := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
 
 	if err := store.Tags.Add(ctx, task.ID, "backend"); err != nil {
 		t.Fatalf("Add: %v", err)
@@ -34,9 +34,9 @@ func TestTags_AddListForTask(t *testing.T) {
 func TestTags_Add_Idempotent(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
-	proj := seed.Project(t, store, owner.ID)
-	task := seed.Task(t, store, proj.ID, owner.ID, nil)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+	task := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
 
 	if err := store.Tags.Add(ctx, task.ID, "dup"); err != nil {
 		t.Fatalf("first Add: %v", err)
@@ -57,9 +57,9 @@ func TestTags_Add_Idempotent(t *testing.T) {
 func TestTags_Delete(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
-	proj := seed.Project(t, store, owner.ID)
-	task := seed.Task(t, store, proj.ID, owner.ID, nil)
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+	task := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
 
 	if err := store.Tags.Add(ctx, task.ID, "remove-me"); err != nil {
 		t.Fatalf("Add: %v", err)
@@ -82,12 +82,12 @@ func TestTags_Delete(t *testing.T) {
 func TestTags_ListDistinctForUser(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
-	owner := seed.User(t, store, "u1", "Alice", "alice@test.com")
-	outsider := seed.User(t, store, "u3", "Carol", "carol@test.com")
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	outsider := seed.User(t, store, seed.UserInput{ID: "u3", Name: "Carol", Email: "carol@test.com"})
 
 	// Owned project — tags here should be visible to owner
-	ownedProj := seed.Project(t, store, owner.ID)
-	t1 := seed.Task(t, store, ownedProj.ID, owner.ID, nil)
+	ownedProj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+	t1 := seed.Task(t, store, seed.TaskInput{ProjectID: ownedProj.ID, OwnerID: owner.ID})
 	if err := store.Tags.Add(ctx, t1.ID, "alpha"); err != nil {
 		t.Fatalf("Add alpha: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestTags_ListDistinctForUser(t *testing.T) {
 	}
 
 	// Shared project (outsider owns, owner is an explicit member)
-	sharedProj := seed.Project(t, store, outsider.ID)
+	sharedProj := seed.Project(t, store, seed.ProjectInput{OwnerID: outsider.ID})
 	if err := store.Projects.AddMember(ctx, &model.ProjectMember{
 		ProjectID: sharedProj.ID,
 		UserID:    owner.ID,
@@ -104,14 +104,14 @@ func TestTags_ListDistinctForUser(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddMember: %v", err)
 	}
-	t2 := seed.Task(t, store, sharedProj.ID, outsider.ID, nil)
+	t2 := seed.Task(t, store, seed.TaskInput{ProjectID: sharedProj.ID, OwnerID: outsider.ID})
 	if err := store.Tags.Add(ctx, t2.ID, "gamma"); err != nil {
 		t.Fatalf("Add gamma: %v", err)
 	}
 
 	// Project owner has no access to — tags here must NOT appear
-	privateProj := seed.Project(t, store, outsider.ID)
-	tPriv := seed.Task(t, store, privateProj.ID, outsider.ID, nil)
+	privateProj := seed.Project(t, store, seed.ProjectInput{OwnerID: outsider.ID})
+	tPriv := seed.Task(t, store, seed.TaskInput{ProjectID: privateProj.ID, OwnerID: outsider.ID})
 	if err := store.Tags.Add(ctx, tPriv.ID, "hidden"); err != nil {
 		t.Fatalf("Add hidden: %v", err)
 	}

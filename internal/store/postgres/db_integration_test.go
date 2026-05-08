@@ -1,16 +1,17 @@
-package sqlite_test
+//go:build integration
+
+package postgres_test
 
 import (
-	"fmt"
 	"testing"
 
-	"github.com/js-beaulieu/tasks-api/internal/store/sqlite"
+	"github.com/js-beaulieu/tasks-api/internal/store/postgres"
+	testdb "github.com/js-beaulieu/tasks-api/internal/testing/db"
 )
 
-func TestOpen_InMemory(t *testing.T) {
-	t.Run("valid in-memory DSN succeeds", func(t *testing.T) {
-		dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared&_pragma=foreign_keys(ON)", t.Name())
-		db, err := sqlite.Open(dsn)
+func TestOpen(t *testing.T) {
+	t.Run("valid postgres dsn succeeds", func(t *testing.T) {
+		db, err := postgres.Open(testdb.PGConnectionString(t))
 		if err != nil {
 			t.Fatalf("Open: %v", err)
 		}
@@ -23,14 +24,13 @@ func TestOpen_InMemory(t *testing.T) {
 }
 
 func TestNew(t *testing.T) {
-	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared&_pragma=foreign_keys(ON)", t.Name())
-	db, err := sqlite.Open(dsn)
+	db, err := postgres.Open(testdb.PGConnectionString(t))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
 	defer db.Close()
 
-	store := sqlite.New(db)
+	store := postgres.New(db)
 	if store == nil {
 		t.Fatal("New returned nil")
 	}

@@ -36,8 +36,19 @@ tasks:
     desc: Run the Docker image (--rm, port 8080)
     vars:
       TAG: '{{default "tasks:latest" .TAG}}'
+      PG_CONNECTION_STRING: '{{default "postgres://postgres:postgres@host.docker.internal:5432/tasks_api?sslmode=disable" .PG_CONNECTION_STRING}}'
     cmds:
-      - docker run --rm -p 8080:8080 -v "$(pwd)/tasks.db:/tasks.db" {{.TAG}}
+      - docker run --rm --add-host=host.docker.internal:host-gateway -e PG_CONNECTION_STRING={{.PG_CONNECTION_STRING}} -p 8080:8080 {{.TAG}}
+
+  compose:up:
+    desc: Start local Postgres for development
+    cmds:
+      - docker compose up -d db
+
+  compose:down:
+    desc: Stop local Postgres
+    cmds:
+      - docker compose down
 
   format:
     desc: Format all Go source files
@@ -67,7 +78,7 @@ tasks:
       - go run ./scripts/mincov {{.THRESHOLD}}
 
   test:coverage:integration:
-    desc: Run integration tests (SQLite) with JUnit XML report and coverage profile
+    desc: Run integration tests (Postgres via Testcontainers) with JUnit XML report and coverage profile
     vars:
       EXCLUDE:
         - internal/testing
@@ -86,7 +97,7 @@ tasks:
       EXCLUDE:
         - internal/testing
         - internal/model
-        - internal/store/sqlite
+        - internal/store/postgres
         - .
         - scripts
       PKGS:
@@ -96,7 +107,7 @@ tasks:
       - go run ./scripts/mincov 75
 
   test:integration:
-    desc: Run integration tests only (requires SQLite)
+    desc: Run integration tests only (spins up Postgres with Testcontainers)
     cmds:
       - go tool gotestsum --junitfile report.xml -- -tags integration ./...
 

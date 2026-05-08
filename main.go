@@ -13,7 +13,7 @@ import (
 	httpmdw "github.com/js-beaulieu/tasks-api/internal/httpserver/middleware"
 	"github.com/js-beaulieu/tasks-api/internal/logger"
 	"github.com/js-beaulieu/tasks-api/internal/mcpserver"
-	"github.com/js-beaulieu/tasks-api/internal/store/sqlite"
+	"github.com/js-beaulieu/tasks-api/internal/store/postgres"
 )
 
 func main() {
@@ -23,14 +23,14 @@ func main() {
 	logger.New(cfg)
 	slog.Info("starting server", "port", cfg.Port)
 
-	db, err := sqlite.Open(cfg.DBPath)
+	db, err := postgres.Open(cfg.PGConnectionString)
 	if err != nil {
 		slog.Error("failed to open database", "err", err)
 		os.Exit(1)
 	}
 	defer db.Close()
 
-	store := sqlite.New(db)
+	store := postgres.New(db)
 
 	r := chi.NewRouter()
 	r.Use(httpmdw.Logging(cfg))

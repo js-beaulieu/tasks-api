@@ -12,10 +12,10 @@ import (
 	"github.com/js-beaulieu/tasks-api/internal/config"
 	"github.com/js-beaulieu/tasks-api/internal/logger"
 	"github.com/js-beaulieu/tasks-api/internal/mcpserver/tools"
-	"github.com/js-beaulieu/tasks-api/internal/store/sqlite"
+	"github.com/js-beaulieu/tasks-api/internal/store/postgres"
 )
 
-func New(store *sqlite.Store, cfg config.Config) *mcp.Server {
+func New(store *postgres.Store, cfg config.Config) *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{
 		Name:    "tasks-api",
 		Version: "1.0.0",
@@ -43,19 +43,19 @@ func New(store *sqlite.Store, cfg config.Config) *mcp.Server {
 	return s
 }
 
-func Handler(store *sqlite.Store, cfg config.Config) http.Handler {
+func Handler(store *postgres.Store, cfg config.Config) http.Handler {
 	s := New(store, cfg)
 	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return s
 	}, nil)
 }
 
-func healthHandler(_ context.Context, _ *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, any, error) {
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: `{"status":"ok"}`},
-		},
-	}, nil, nil
+type healthResult struct {
+	Status string `json:"status"`
+}
+
+func healthHandler(_ context.Context, _ *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, *healthResult, error) {
+	return nil, &healthResult{Status: "ok"}, nil
 }
 
 func withLogging[I, O any](name string, cfg config.Config, h mcp.ToolHandlerFor[I, O]) mcp.ToolHandlerFor[I, O] {

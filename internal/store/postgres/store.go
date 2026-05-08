@@ -1,4 +1,4 @@
-package sqlite
+package postgres
 
 import (
 	"database/sql"
@@ -6,7 +6,7 @@ import (
 	"github.com/js-beaulieu/tasks-api/internal/repo"
 )
 
-// Store holds concrete sqlite implementations of all repository interfaces.
+// Store holds concrete Postgres implementations of all repository interfaces.
 type Store struct {
 	Users    repo.UserRepo
 	Projects repo.ProjectRepo

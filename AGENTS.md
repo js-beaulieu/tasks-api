@@ -1,6 +1,6 @@
 # tasks-api
 
-Backend API for a task management application. Exposes a REST API and an MCP (Model Context Protocol) interface, backed by SQLite.
+Backend API for a task management application. Exposes a REST API and an MCP (Model Context Protocol) interface, backed by Postgres.
 
 ## Commands
 
@@ -9,7 +9,7 @@ task install                 # install Go tool deps and the pre-commit hook
 task build                   # build all packages
 task test                    # all tests (unit + integration)
 task test:unit               # unit tests only (no DB)
-task test:integration        # integration tests only (SQLite, real DB)
+task test:integration        # integration tests only (Postgres via Testcontainers)
 task format                  # gofmt -w .
 task lint                    # golangci-lint via go tool (pinned in go.mod)
 task check                   # format + lint + build + test:coverage
@@ -21,13 +21,13 @@ task check                   # format + lint + build + test:coverage
 
 ```
 main.go
-  └─ sqlite.Open("tasks.db") → sqlite.Store{Users, Projects, Tasks, Tags}
+  └─ postgres.Open(PG_CONNECTION_STRING) → postgres.Store{Users, Projects, Tasks, Tags}
   └─ chi router
        ├─ httpserver.New(store)      → REST on /
        └─ mcpserver.Handler(store)   → MCP StreamableHTTP on /mcp
 ```
 
-All layers talk through `internal/repo` interfaces — handlers never import `sqlite` directly (except `httpserver.New` / `mcpserver.Handler` which accept `*sqlite.Store` at the wiring point).
+All layers talk through `internal/repo` interfaces — handlers never import `postgres` directly (except `httpserver.New` / `mcpserver.Handler` which accept `*postgres.Store` at the wiring point).
 
 ### Package map
 
@@ -35,12 +35,12 @@ All layers talk through `internal/repo` interfaces — handlers never import `sq
 |---------|------|
 | `internal/model` | Domain structs: User, Project, ProjectMember, ProjectStatus, Task |
 | `internal/repo` | Repository interfaces + sentinel errors (ErrNotFound, ErrNoAccess, ErrConflict) |
-| `internal/store/sqlite` | Concrete SQLite implementations; goose migrations in `migrations/` |
-| `internal/config` | Config struct loaded from env (PORT, LOG_FORMAT, LOG_LEVEL, LOG_DETAILED) |
+| `internal/store/postgres` | Concrete Postgres implementations; goose migrations in `migrations/` |
+| `internal/config` | Config struct loaded from env (PORT, PG_CONNECTION_STRING, LOG_FORMAT, LOG_LEVEL, LOG_DETAILED) |
 | `internal/logger` | slog-based logger; `logger.FromCtx` / `logger.IntoCtx` context helpers |
 | `internal/httpserver` | chi router wiring; sub-packages: middleware, projects, tasks, tags, users, render |
 | `internal/mcpserver` | MCP server wiring + `withLogging` wrapper; sub-package: tools |
-| `internal/testing` | Shared test helpers: `db` (in-memory SQLite), `mock` (repo mocks), `seed` (test fixtures) |
+| `internal/testing` | Shared test helpers: `db` (Testcontainers Postgres), `mock` (repo mocks), `seed` (test fixtures) |
 
 ## Domain Model
 
@@ -97,7 +97,7 @@ All MCP tools accept `user_id` for access control. Tools are registered via a `w
 ## Testing
 
 - **Unit tests** (`internal/httpserver/...`): mock repos via `internal/testing/mock/`, `httptest.NewRecorder`, no DB
-- **Integration tests** (`internal/store/sqlite/...`): build tag `//go:build integration`, real in-memory SQLite (`file::memory:?cache=shared&_pragma=foreign_keys(ON)`), migrations run via `db.Open`
+- **Integration tests** (`internal/store/postgres/...`): build tag `//go:build integration`, real Postgres via `testcontainers-go`, migrations run via `db.Open`
 - **Isolation pattern** when adding new store tests: run new tests with `-run TestNewFeature` separately from existing tests to avoid nil-pointer panics hiding regressions
 
 ## Structure
@@ -109,7 +109,7 @@ internal/
   logger/           slog context helpers
   model/            domain types
   repo/             interfaces + sentinel errors
-  store/sqlite/     concrete implementations + goose migrations
+  store/postgres/   concrete implementations + goose migrations
   httpserver/
     middleware/     auth (X-User-ID), logging (request ID, body)
     projects/       handler + access.go (RequireRole)
@@ -120,7 +120,7 @@ internal/
   mcpserver/
     tools/          one file per entity (projects, tasks, tags)
   testing/
-    db/             in-memory SQLite helper
+    db/             Testcontainers Postgres helper
     mock/           repo mock implementations
     seed/           test fixture builders
 ```
