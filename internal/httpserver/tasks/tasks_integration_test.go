@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/js-beaulieu/tasks-api/internal/httpserver/httptestutil"
 	"github.com/js-beaulieu/tasks-api/internal/model"
+	"github.com/js-beaulieu/tasks-api/internal/testing/http"
 )
 
 func TestTasksIntegration_Update(t *testing.T) {

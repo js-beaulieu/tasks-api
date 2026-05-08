@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/js-beaulieu/tasks-api/internal/httpserver/httptestutil"
 	"github.com/js-beaulieu/tasks-api/internal/model"
+	"github.com/js-beaulieu/tasks-api/internal/testing/http"
 )
 
 func TestProjectsIntegration_CreateAndList(t *testing.T) {
