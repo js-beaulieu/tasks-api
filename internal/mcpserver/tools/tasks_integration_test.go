@@ -12,8 +12,8 @@ import (
 
 func TestMCPTasksIntegration_CreateListGetUpdateAndComplete(t *testing.T) {
 	env := mcptest.NewEnv(t)
-	project := seed.MCPProject(t, env)
-	task := seed.MCPTask(t, env, project.ID)
+	project := seed.Project(t, env)
+	task := seed.Task(t, env, project.ID)
 
 	listResult := mcptest.CallTool(t, env, "list_tasks", map[string]any{"project_id": project.ID})
 	list := mcptest.DecodeStructured[struct {
@@ -87,9 +87,9 @@ func TestMCPTasksIntegration_CreateListGetUpdateAndComplete(t *testing.T) {
 
 func TestMCPTasksIntegration_CreateAndListSubtasks(t *testing.T) {
 	env := mcptest.NewEnv(t)
-	project := seed.MCPProject(t, env)
-	task := seed.MCPTask(t, env, project.ID)
-	subtask := seed.MCPSubtask(t, env, task)
+	project := seed.Project(t, env)
+	task := seed.Task(t, env, project.ID)
+	subtask := seed.Subtask(t, env, task)
 
 	listResult := mcptest.CallTool(t, env, "list_tasks", map[string]any{"parent_id": task.ID})
 	list := mcptest.DecodeStructured[struct {

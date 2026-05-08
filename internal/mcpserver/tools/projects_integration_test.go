@@ -12,7 +12,7 @@ import (
 
 func TestMCPProjectsIntegration_CreateListGetUpdate(t *testing.T) {
 	env := mcptest.NewEnv(t)
-	project := seed.MCPProject(t, env)
+	project := seed.Project(t, env)
 
 	listResult := mcptest.CallTool(t, env, "list_projects", nil)
 	list := mcptest.DecodeStructured[struct {

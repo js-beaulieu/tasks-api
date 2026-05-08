@@ -12,8 +12,8 @@ import (
 
 func TestTagsIntegration_AddAndListForTask(t *testing.T) {
 	env := httptestutil.NewEnv(t)
-	project := seed.HTTPProject(t, env)
-	task := seed.HTTPTask(t, env, project.ID)
+	project := seed.Project(t, env)
+	task := seed.Task(t, env, project.ID)
 
 	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+task.ID+"/tags", `{"tag":"backend"}`, env.User.ID)
 	httptestutil.AssertStatus(t, res, http.StatusCreated)

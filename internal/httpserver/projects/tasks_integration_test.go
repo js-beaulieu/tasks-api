@@ -13,8 +13,8 @@ import (
 
 func TestProjectTasksIntegration_CreateAndList(t *testing.T) {
 	env := httptestutil.NewEnv(t)
-	project := seed.HTTPProject(t, env)
-	task := seed.HTTPTask(t, env, project.ID)
+	project := seed.Project(t, env)
+	task := seed.Task(t, env, project.ID)
 
 	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/projects/"+project.ID+"/tasks", "", env.User.ID)
 	httptestutil.AssertStatus(t, res, http.StatusOK)

@@ -11,8 +11,8 @@ import (
 
 func TestMCPTagsIntegration_ListTags(t *testing.T) {
 	env := mcptest.NewEnv(t)
-	project := seed.MCPProject(t, env)
-	task := seed.MCPTask(t, env, project.ID)
+	project := seed.Project(t, env)
+	task := seed.Task(t, env, project.ID)
 
 	mcptest.CallTool(t, env, "update_task", map[string]any{
 		"task_id":  task.ID,
