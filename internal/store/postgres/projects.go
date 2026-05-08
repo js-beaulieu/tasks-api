@@ -303,7 +303,6 @@ func (s *projectStore) ListStatuses(ctx context.Context, projectID string) ([]*m
 }
 
 // AddStatus appends a new status at the end of the project's status list.
-// The position is computed inside a tx to avoid races.
 func (s *projectStore) AddStatus(ctx context.Context, projectID, status string) error {
 	logger.FromCtx(ctx).Debug("adding status", "project_id", projectID, "status", status)
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -311,6 +310,10 @@ func (s *projectStore) AddStatus(ctx context.Context, projectID, status string) 
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck
+
+	if err := lockProjectStatuses(ctx, tx, projectID); err != nil {
+		return err
+	}
 
 	var newPos int
 	err = tx.QueryRowContext(ctx,

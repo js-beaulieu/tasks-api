@@ -109,6 +109,9 @@ func (s *taskStore) Create(ctx context.Context, t *model.Task) error {
 	if err := validateStatus(ctx, tx, t.ProjectID, t.Status); err != nil {
 		return err
 	}
+	if err := lockTaskSiblingLists(ctx, tx, taskSiblingList{projectID: t.ProjectID, parentID: t.ParentID}); err != nil {
+		return err
+	}
 
 	// Auto-assign position
 	var pos int
@@ -157,7 +160,7 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 	var cur model.Task
 	var curParentID sql.NullString
 	err = tx.QueryRowContext(ctx,
-		bind(`SELECT project_id, parent_id, position FROM tasks WHERE id = ?`), t.ID,
+		bind(`SELECT project_id, parent_id, position FROM tasks WHERE id = ? FOR UPDATE`), t.ID,
 	).Scan(&cur.ProjectID, &curParentID, &cur.Position)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -181,6 +184,12 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 	// Determine whether this is a move
 	newParentID := t.ParentID
 	isMove := t.ProjectID != cur.ProjectID || !parentIDsEqual(newParentID, cur.ParentID)
+	if err := lockTaskSiblingLists(ctx, tx,
+		taskSiblingList{projectID: cur.ProjectID, parentID: cur.ParentID},
+		taskSiblingList{projectID: targetProjectID, parentID: newParentID},
+	); err != nil {
+		return err
+	}
 
 	if err := updateTaskPosition(ctx, tx, t.ID, cur, targetProjectID, newParentID, t.Position, isMove); err != nil {
 		return err
@@ -305,6 +314,9 @@ func (s *taskStore) CompleteTask(ctx context.Context, id, doneStatus string) (*m
 	}
 
 	// Compute position for the new task (appended to top-level siblings).
+	if err := lockTaskSiblingLists(ctx, tx, taskSiblingList{projectID: task.ProjectID}); err != nil {
+		return nil, nil, err
+	}
 	var pos int
 	if err = tx.QueryRowContext(ctx,
 		bind(`SELECT COALESCE(MAX(position), -1) + 1 FROM tasks WHERE project_id = ? AND parent_id IS NULL`),
@@ -443,7 +455,7 @@ func validateMoveParent(ctx context.Context, tx *sql.Tx, targetProjectID string,
 	}
 	var parentProject string
 	err := tx.QueryRowContext(ctx,
-		bind(`SELECT project_id FROM tasks WHERE id = ?`), *newParentID,
+		bind(`SELECT project_id FROM tasks WHERE id = ? FOR UPDATE`), *newParentID,
 	).Scan(&parentProject)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
