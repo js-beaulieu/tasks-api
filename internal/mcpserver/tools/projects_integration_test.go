@@ -7,12 +7,18 @@ import (
 
 	"github.com/js-beaulieu/tasks-api/internal/model"
 	mcptest "github.com/js-beaulieu/tasks-api/internal/testing/mcp"
-	"github.com/js-beaulieu/tasks-api/internal/testing/seed"
 )
 
 func TestMCPProjectsIntegration_CreateListGetUpdate(t *testing.T) {
 	env := mcptest.NewEnv(t)
-	project := seed.Project(t, env)
+
+	createResult := mcptest.CallTool(t, env, "create_project", map[string]any{
+		"name":        "Test Project",
+		"description": "integration project",
+		"due_date":    "2026-06-01",
+		"statuses":    []string{"review"},
+	})
+	project := mcptest.DecodeStructured[model.Project](t, createResult)
 
 	listResult := mcptest.CallTool(t, env, "list_projects", nil)
 	list := mcptest.DecodeStructured[struct {

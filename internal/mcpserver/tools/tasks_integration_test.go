@@ -12,8 +12,16 @@ import (
 
 func TestMCPTasksIntegration_CreateListGetUpdateAndComplete(t *testing.T) {
 	env := mcptest.NewEnv(t)
-	project := seed.Project(t, env)
-	task := seed.Task(t, env, project.ID)
+	project := seed.Project(t, env.Store, env.User.ID)
+
+	createResult := mcptest.CallTool(t, env, "create_task", map[string]any{
+		"project_id":  project.ID,
+		"name":        "Test Task",
+		"description": "integration task",
+		"status":      "todo",
+		"due_date":    "2026-06-02",
+	})
+	task := mcptest.DecodeStructured[model.Task](t, createResult)
 
 	listResult := mcptest.CallTool(t, env, "list_tasks", map[string]any{"project_id": project.ID})
 	list := mcptest.DecodeStructured[struct {
@@ -87,9 +95,16 @@ func TestMCPTasksIntegration_CreateListGetUpdateAndComplete(t *testing.T) {
 
 func TestMCPTasksIntegration_CreateAndListSubtasks(t *testing.T) {
 	env := mcptest.NewEnv(t)
-	project := seed.Project(t, env)
-	task := seed.Task(t, env, project.ID)
-	subtask := seed.Task(t, env, task)
+	project := seed.Project(t, env.Store, env.User.ID)
+	task := seed.Task(t, env.Store, project.ID, env.User.ID, nil)
+
+	createResult := mcptest.CallTool(t, env, "create_task", map[string]any{
+		"project_id": task.ProjectID,
+		"parent_id":  task.ID,
+		"name":       "Test Task",
+		"status":     "todo",
+	})
+	subtask := mcptest.DecodeStructured[model.Task](t, createResult)
 
 	listResult := mcptest.CallTool(t, env, "list_tasks", map[string]any{"parent_id": task.ID})
 	list := mcptest.DecodeStructured[struct {
