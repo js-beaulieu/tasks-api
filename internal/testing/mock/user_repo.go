@@ -13,6 +13,7 @@ type UserRepo struct {
 	Err       error
 	GetByIDFn func(ctx context.Context, id string) (*model.User, error)
 	CreateFn  func(ctx context.Context, id, name, email string) (*model.User, error)
+	UpdateFn  func(ctx context.Context, u *model.User) error
 }
 
 func (m *UserRepo) GetByID(ctx context.Context, id string) (*model.User, error) {
@@ -29,7 +30,10 @@ func (m *UserRepo) Create(ctx context.Context, id, name, email string) (*model.U
 	return m.User, m.Err
 }
 
-func (m *UserRepo) Update(_ context.Context, _ *model.User) error {
+func (m *UserRepo) Update(ctx context.Context, u *model.User) error {
+	if m.UpdateFn != nil {
+		return m.UpdateFn(ctx, u)
+	}
 	return m.Err
 }
 

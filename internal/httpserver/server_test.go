@@ -23,13 +23,33 @@ func TestNew(t *testing.T) {
 			t.Errorf("status = %d, want 200", w.Code)
 		}
 	})
+
+	t.Run("openapi is public", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/openapi.json", nil)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+		}
+
+		var doc struct {
+			Paths map[string]any `json:"paths"`
+		}
+		if err := json.NewDecoder(w.Body).Decode(&doc); err != nil {
+			t.Fatalf("decode openapi: %v", err)
+		}
+		if _, ok := doc.Paths["/projects"]; !ok {
+			t.Fatalf("/projects path missing from OpenAPI")
+		}
+	})
 }
 
 func TestHealthHandler(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
 
-	healthHandler(w, req)
+	h := New(&postgres.Store{Users: &mock.UserRepo{}}, config.Config{})
+	h.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", w.Code)

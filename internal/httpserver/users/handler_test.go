@@ -13,7 +13,6 @@ import (
 	"github.com/js-beaulieu/tasks-api/internal/testing/mock"
 )
 
-// authed wraps a handler with AuthMiddleware backed by the given mock.
 func authed(m *mock.UserRepo, h http.Handler) http.Handler {
 	return middleware.AuthMiddleware(m)(h)
 }
@@ -83,7 +82,6 @@ func TestGetUserByID(t *testing.T) {
 			t.Errorf("ID = %q, want %q", got.ID, "user-1")
 		}
 	})
-
 }
 
 func TestUpdateMe(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/js-beaulieu/tasks-api/internal/httpserver/render"
 	"github.com/js-beaulieu/tasks-api/internal/logger"
@@ -21,6 +22,11 @@ var userCtxKey = ctxKey{}
 func AuthMiddleware(users repo.UserRepo) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if isPublicHumaPath(r.URL.Path) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			id := r.Header.Get("X-User-ID")
 			if id == "" {
 				render.Error(w, http.StatusUnauthorized, "unauthorized")
@@ -49,6 +55,13 @@ func AuthMiddleware(users repo.UserRepo) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+func isPublicHumaPath(path string) bool {
+	return path == "/docs" ||
+		strings.HasPrefix(path, "/docs/") ||
+		strings.HasPrefix(path, "/openapi") ||
+		strings.HasPrefix(path, "/schemas/")
 }
 
 // UserFromCtx retrieves the authenticated *model.User from the context.

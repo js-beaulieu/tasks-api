@@ -1,15 +1,18 @@
 package users
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
 	"net/http"
 	"strings"
 
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
 
 	"github.com/js-beaulieu/tasks-api/internal/httpserver/middleware"
 	"github.com/js-beaulieu/tasks-api/internal/httpserver/render"
+	"github.com/js-beaulieu/tasks-api/internal/model"
 	"github.com/js-beaulieu/tasks-api/internal/repo"
 )
 
@@ -17,70 +20,87 @@ type Handler struct {
 	users repo.UserRepo
 }
 
-// NewRouter returns a chi router for user routes.
-// Mount at /users in the main server.
-func NewRouter(users repo.UserRepo) http.Handler {
+func Register(api huma.API, users repo.UserRepo) {
 	h := &Handler{users: users}
+	register(api, h, "/users")
+}
+
+func NewRouter(users repo.UserRepo) http.Handler {
 	r := chi.NewRouter()
-	r.Get("/me", h.getMe)
-	r.Patch("/me", h.updateMe)
-	r.Get("/{userID}", h.getByID)
+	api := humachi.New(r, render.HumaConfig())
+	register(api, &Handler{users: users}, "")
 	return r
 }
 
-// GET /users/me — returns the authenticated user from context.
-func (h *Handler) getMe(w http.ResponseWriter, r *http.Request) {
-	render.JSON(w, http.StatusOK, middleware.UserFromCtx(r.Context()))
+func register(api huma.API, h *Handler, prefix string) {
+	huma.Get(api, route(prefix, "/me"), h.getMe)
+	huma.Patch(api, route(prefix, "/me"), h.updateMe)
+	huma.Get(api, route(prefix, "/{userID}"), h.getByID)
 }
 
-// GET /users/{userID} — returns a single user by ID.
-func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
-	u, err := h.users.GetByID(r.Context(), chi.URLParam(r, "userID"))
+func route(prefix, path string) string {
+	if prefix == "" {
+		return path
+	}
+	return prefix + path
+}
+
+type meOutput struct {
+	Body model.User
+}
+
+func (h *Handler) getMe(ctx context.Context, _ *struct{}) (*meOutput, error) {
+	u := middleware.UserFromCtx(ctx)
+	return &meOutput{Body: *u}, nil
+}
+
+type getUserOutput struct {
+	Body model.User
+}
+
+func (h *Handler) getByID(ctx context.Context, input *struct {
+	UserID string `path:"userID"`
+}) (*getUserOutput, error) {
+	u, err := h.users.GetByID(ctx, input.UserID)
 	if err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
-			render.NotFound(w)
-			return
+			return nil, huma.Error404NotFound("not found")
 		}
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
+		return nil, huma.Error500InternalServerError("internal error")
 	}
-	render.JSON(w, http.StatusOK, u)
+	return &getUserOutput{Body: *u}, nil
 }
 
-type updateMeReq struct {
-	Name  *string `json:"name"`
-	Email *string `json:"email"`
+type updateMeInput struct {
+	Body struct {
+		Name  *string `json:"name,omitempty"`
+		Email *string `json:"email,omitempty"`
+	}
 }
 
-// PATCH /users/me — updates the authenticated user's name and/or email.
-func (h *Handler) updateMe(w http.ResponseWriter, r *http.Request) {
-	var body updateMeReq
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		render.BadRequest(w, "invalid JSON")
-		return
-	}
-	u := middleware.UserFromCtx(r.Context())
-	if body.Name != nil {
-		if strings.TrimSpace(*body.Name) == "" {
-			render.BadRequest(w, "name cannot be blank")
-			return
+type updateMeOutput struct {
+	Body model.User
+}
+
+func (h *Handler) updateMe(ctx context.Context, input *updateMeInput) (*updateMeOutput, error) {
+	u := middleware.UserFromCtx(ctx)
+	if input.Body.Name != nil {
+		if strings.TrimSpace(*input.Body.Name) == "" {
+			return nil, huma.Error400BadRequest("name cannot be blank")
 		}
-		u.Name = *body.Name
+		u.Name = *input.Body.Name
 	}
-	if body.Email != nil {
-		if strings.TrimSpace(*body.Email) == "" {
-			render.BadRequest(w, "email cannot be blank")
-			return
+	if input.Body.Email != nil {
+		if strings.TrimSpace(*input.Body.Email) == "" {
+			return nil, huma.Error400BadRequest("email cannot be blank")
 		}
-		u.Email = *body.Email
+		u.Email = *input.Body.Email
 	}
-	if err := h.users.Update(r.Context(), u); err != nil {
+	if err := h.users.Update(ctx, u); err != nil {
 		if errors.Is(err, repo.ErrConflict) {
-			render.Error(w, http.StatusConflict, "email already in use")
-			return
+			return nil, huma.Error409Conflict("email already in use")
 		}
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
+		return nil, huma.Error500InternalServerError("internal error")
 	}
-	render.JSON(w, http.StatusOK, u)
+	return &updateMeOutput{Body: *u}, nil
 }
