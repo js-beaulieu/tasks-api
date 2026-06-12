@@ -13,7 +13,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/js-beaulieu/tasks-api/internal/httpserver/middleware"
-	"github.com/js-beaulieu/tasks-api/internal/httpserver/render"
 	"github.com/js-beaulieu/tasks-api/internal/model"
 	"github.com/js-beaulieu/tasks-api/internal/repo"
 )
@@ -69,73 +68,55 @@ type Handler struct {
 
 func Register(api huma.API, projects repo.ProjectRepo, tasks repo.TaskRepo, tags repo.TagRepo) {
 	h := &Handler{projects: projects, tasks: tasks, tags: tags, api: api}
-	register(api, h, "/tasks")
-}
-
-func NewRouter(projects repo.ProjectRepo, tasks repo.TaskRepo, tags repo.TagRepo) http.Handler {
-	r := chi.NewRouter()
-	api := humachi.New(r, render.HumaConfig())
-	register(api, &Handler{projects: projects, tasks: tasks, tags: tags, api: api}, "")
-	return r
-}
-
-func register(api huma.API, h *Handler, prefix string) {
 
 	taskMW := taskCtxMW(h)
 
 	huma.Register(api, huma.Operation{
-		OperationID: "get-task", Method: http.MethodGet, Path: route(prefix, "/{taskID}"),
+		OperationID: "get-task", Method: http.MethodGet, Path: "/tasks/{taskID}",
 		Middlewares: huma.Middlewares{taskMW},
 	}, h.get)
 
 	huma.Register(api, huma.Operation{
-		OperationID: "update-task", Method: http.MethodPatch, Path: route(prefix, "/{taskID}"),
+		OperationID: "update-task", Method: http.MethodPatch, Path: "/tasks/{taskID}",
 		Middlewares: huma.Middlewares{taskMW},
 	}, h.update)
 
 	huma.Register(api, huma.Operation{
-		OperationID: "delete-task", Method: http.MethodDelete, Path: route(prefix, "/{taskID}"),
+		OperationID: "delete-task", Method: http.MethodDelete, Path: "/tasks/{taskID}",
 		Middlewares: huma.Middlewares{taskMW},
 	}, h.delete)
 
 	huma.Register(api, huma.Operation{
-		OperationID: "complete-task", Method: http.MethodPost, Path: route(prefix, "/{taskID}/complete"),
+		OperationID: "complete-task", Method: http.MethodPost, Path: "/tasks/{taskID}/complete",
 		Middlewares: huma.Middlewares{taskMW},
 	}, h.completeTask)
 
 	huma.Register(api, huma.Operation{
-		OperationID: "list-subtasks", Method: http.MethodGet, Path: route(prefix, "/{taskID}/tasks"),
+		OperationID: "list-subtasks", Method: http.MethodGet, Path: "/tasks/{taskID}/tasks",
 		Middlewares: huma.Middlewares{taskMW},
 	}, h.listSubtasks)
 
 	huma.Register(api, huma.Operation{
-		OperationID: "create-subtask", Method: http.MethodPost, Path: route(prefix, "/{taskID}/tasks"),
+		OperationID: "create-subtask", Method: http.MethodPost, Path: "/tasks/{taskID}/tasks",
 		DefaultStatus: http.StatusCreated,
 		Middlewares:   huma.Middlewares{taskMW},
 	}, h.createSubtask)
 
 	huma.Register(api, huma.Operation{
-		OperationID: "list-task-tags", Method: http.MethodGet, Path: route(prefix, "/{taskID}/tags"),
+		OperationID: "list-task-tags", Method: http.MethodGet, Path: "/tasks/{taskID}/tags",
 		Middlewares: huma.Middlewares{taskMW},
 	}, h.listTags)
 
 	huma.Register(api, huma.Operation{
-		OperationID: "add-task-tag", Method: http.MethodPost, Path: route(prefix, "/{taskID}/tags"),
+		OperationID: "add-task-tag", Method: http.MethodPost, Path: "/tasks/{taskID}/tags",
 		DefaultStatus: http.StatusCreated,
 		Middlewares:   huma.Middlewares{taskMW},
 	}, h.addTag)
 
 	huma.Register(api, huma.Operation{
-		OperationID: "delete-task-tag", Method: http.MethodDelete, Path: route(prefix, "/{taskID}/tags/{tag}"),
+		OperationID: "delete-task-tag", Method: http.MethodDelete, Path: "/tasks/{taskID}/tags/{tag}",
 		Middlewares: huma.Middlewares{taskMW},
 	}, h.deleteTag)
-}
-
-func route(prefix, path string) string {
-	if prefix == "" {
-		return path
-	}
-	return prefix + path
 }
 
 func taskCtxMW(h *Handler) func(ctx huma.Context, next func(huma.Context)) {

@@ -12,7 +12,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/js-beaulieu/tasks-api/internal/httpserver/middleware"
-	"github.com/js-beaulieu/tasks-api/internal/httpserver/render"
 	"github.com/js-beaulieu/tasks-api/internal/model"
 	"github.com/js-beaulieu/tasks-api/internal/repo"
 )
@@ -38,28 +37,17 @@ type Handler struct {
 
 func Register(api huma.API, projects repo.ProjectRepo, tasks repo.TaskRepo) {
 	h := &Handler{projects: projects, tasks: tasks, api: api}
-	register(api, h, "/projects")
-}
-
-func NewRouter(projects repo.ProjectRepo, tasks repo.TaskRepo) http.Handler {
-	r := chi.NewRouter()
-	api := humachi.New(r, render.HumaConfig())
-	register(api, &Handler{projects: projects, tasks: tasks, api: api}, "")
-	return r
-}
-
-func register(api huma.API, h *Handler, prefix string) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "list-projects",
 		Method:      http.MethodGet,
-		Path:        route(prefix, "/"),
+		Path:        "/projects",
 	}, h.list)
 
 	huma.Register(api, huma.Operation{
 		OperationID:   "create-project",
 		Method:        http.MethodPost,
-		Path:          route(prefix, "/"),
+		Path:          "/projects",
 		DefaultStatus: http.StatusCreated,
 	}, h.create)
 
@@ -68,35 +56,35 @@ func register(api huma.API, h *Handler, prefix string) {
 	huma.Register(api, huma.Operation{
 		OperationID: "get-project",
 		Method:      http.MethodGet,
-		Path:        route(prefix, "/{projectID}"),
+		Path:        "/projects/{projectID}",
 		Middlewares: huma.Middlewares{projectCtxMW},
 	}, h.get)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "update-project",
 		Method:      http.MethodPatch,
-		Path:        route(prefix, "/{projectID}"),
+		Path:        "/projects/{projectID}",
 		Middlewares: huma.Middlewares{projectCtxMW},
 	}, h.update)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "delete-project",
 		Method:      http.MethodDelete,
-		Path:        route(prefix, "/{projectID}"),
+		Path:        "/projects/{projectID}",
 		Middlewares: huma.Middlewares{projectCtxMW},
 	}, h.delete)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "list-members",
 		Method:      http.MethodGet,
-		Path:        route(prefix, "/{projectID}/members"),
+		Path:        "/projects/{projectID}/members",
 		Middlewares: huma.Middlewares{projectCtxMW},
 	}, h.listMembers)
 
 	huma.Register(api, huma.Operation{
 		OperationID:   "add-member",
 		Method:        http.MethodPost,
-		Path:          route(prefix, "/{projectID}/members"),
+		Path:          "/projects/{projectID}/members",
 		DefaultStatus: http.StatusCreated,
 		Middlewares:   huma.Middlewares{projectCtxMW},
 	}, h.addMember)
@@ -104,28 +92,28 @@ func register(api huma.API, h *Handler, prefix string) {
 	huma.Register(api, huma.Operation{
 		OperationID: "update-member",
 		Method:      http.MethodPatch,
-		Path:        route(prefix, "/{projectID}/members/{userID}"),
+		Path:        "/projects/{projectID}/members/{userID}",
 		Middlewares: huma.Middlewares{projectCtxMW},
 	}, h.updateMember)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "remove-member",
 		Method:      http.MethodDelete,
-		Path:        route(prefix, "/{projectID}/members/{userID}"),
+		Path:        "/projects/{projectID}/members/{userID}",
 		Middlewares: huma.Middlewares{projectCtxMW},
 	}, h.removeMember)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "list-statuses",
 		Method:      http.MethodGet,
-		Path:        route(prefix, "/{projectID}/statuses"),
+		Path:        "/projects/{projectID}/statuses",
 		Middlewares: huma.Middlewares{projectCtxMW},
 	}, h.listStatuses)
 
 	huma.Register(api, huma.Operation{
 		OperationID:   "add-status",
 		Method:        http.MethodPost,
-		Path:          route(prefix, "/{projectID}/statuses"),
+		Path:          "/projects/{projectID}/statuses",
 		DefaultStatus: http.StatusCreated,
 		Middlewares:   huma.Middlewares{projectCtxMW},
 	}, h.addStatus)
@@ -133,34 +121,24 @@ func register(api huma.API, h *Handler, prefix string) {
 	huma.Register(api, huma.Operation{
 		OperationID: "delete-status",
 		Method:      http.MethodDelete,
-		Path:        route(prefix, "/{projectID}/statuses/{status}"),
+		Path:        "/projects/{projectID}/statuses/{status}",
 		Middlewares: huma.Middlewares{projectCtxMW},
 	}, h.deleteStatus)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "list-project-tasks",
 		Method:      http.MethodGet,
-		Path:        route(prefix, "/{projectID}/tasks"),
+		Path:        "/projects/{projectID}/tasks",
 		Middlewares: huma.Middlewares{projectCtxMW},
 	}, h.listTasks)
 
 	huma.Register(api, huma.Operation{
 		OperationID:   "create-project-task",
 		Method:        http.MethodPost,
-		Path:          route(prefix, "/{projectID}/tasks"),
+		Path:          "/projects/{projectID}/tasks",
 		DefaultStatus: http.StatusCreated,
 		Middlewares:   huma.Middlewares{projectCtxMW},
 	}, h.createTask)
-}
-
-func route(prefix, path string) string {
-	if prefix == "" {
-		return path
-	}
-	if path == "/" {
-		return prefix
-	}
-	return prefix + path
 }
 
 func projectCtxMW(h *Handler) func(ctx huma.Context, next func(huma.Context)) {

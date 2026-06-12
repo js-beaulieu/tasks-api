@@ -9,7 +9,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/js-beaulieu/tasks-api/internal/httpserver/middleware"
+	"github.com/danielgtaylor/huma/v2"
+
 	"github.com/js-beaulieu/tasks-api/internal/httpserver/tasks"
 	"github.com/js-beaulieu/tasks-api/internal/model"
 	"github.com/js-beaulieu/tasks-api/internal/repo"
@@ -18,7 +19,6 @@ import (
 
 var testUser = &model.User{ID: "user-1", Name: "Alice", Email: "alice@example.com"}
 
-// newTestTask returns a fresh task for each test — avoids shared pointer mutations.
 func newTestTask() *model.Task {
 	pid := "old-parent"
 	return &model.Task{
@@ -46,14 +46,21 @@ func newRequest(method, path string, body any) *http.Request {
 	return req
 }
 
-func serve(handler http.Handler, req *http.Request) *httptest.ResponseRecorder {
-	w := httptest.NewRecorder()
-	userRepo := &mock.UserRepo{User: testUser}
-	middleware.AuthMiddleware(userRepo)(handler).ServeHTTP(w, req)
-	return w
+func rawRequest(method, path, body string) *http.Request {
+	req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
+	req.Header.Set("X-User-ID", testUser.ID)
+	req.Header.Set("X-User-Name", testUser.Name)
+	req.Header.Set("X-User-Email", testUser.Email)
+	req.Header.Set("Content-Type", "application/json")
+	return req
 }
 
-// taskRepoFound returns a TaskRepo that returns a fresh task for every Get call.
+func newHandler(pr *mock.ProjectRepo, tr *mock.TaskRepo, tagRepo *mock.TagRepo) http.Handler {
+	return mock.NewTestRouter(&mock.UserRepo{User: testUser}, func(api huma.API) {
+		tasks.Register(api, pr, tr, tagRepo)
+	})
+}
+
 func taskRepoFound() *mock.TaskRepo {
 	return &mock.TaskRepo{
 		GetFn: func(_ context.Context, _ string) (*model.Task, error) {
@@ -62,25 +69,22 @@ func taskRepoFound() *mock.TaskRepo {
 	}
 }
 
-// projectRepoWithRole returns a ProjectRepo whose GetMemberRole always returns the given role.
 func projectRepoWithRole(role string) *mock.ProjectRepo {
 	return &mock.ProjectRepo{
+		GetFn: func(_ context.Context, _ string) (*model.Project, error) {
+			return &model.Project{ID: "proj-1", OwnerID: "user-1"}, nil
+		},
 		GetMemberRoleFn: func(_ context.Context, _, _ string) (string, error) {
 			return role, nil
 		},
 	}
 }
 
-// ── GET /tasks/{id} ────────────────────────────────────────────────────────
-
 func TestGetTask(t *testing.T) {
-	t.Run("GET /task-1 returns 200", func(t *testing.T) {
-		handler := tasks.NewRouter(
-			projectRepoWithRole(model.RoleRead),
-			taskRepoFound(),
-			&mock.TagRepo{},
-		)
-		w := serve(handler, newRequest(http.MethodGet, "/task-1", nil))
+	t.Run("GET /tasks/{id} returns 200", func(t *testing.T) {
+		handler := newHandler(projectRepoWithRole(model.RoleRead), taskRepoFound(), &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodGet, "/tasks/task-1", nil))
 		if w.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", w.Code)
 		}
@@ -93,46 +97,40 @@ func TestGetTask(t *testing.T) {
 		}
 	})
 
-	t.Run("GET /task-1 not found returns 404", func(t *testing.T) {
+	t.Run("GET /tasks/{id} not found returns 404", func(t *testing.T) {
 		tr := &mock.TaskRepo{
 			GetFn: func(_ context.Context, _ string) (*model.Task, error) {
 				return nil, repo.ErrNotFound
 			},
 		}
-		handler := tasks.NewRouter(
-			projectRepoWithRole(model.RoleRead),
-			tr,
-			&mock.TagRepo{},
-		)
-		w := serve(handler, newRequest(http.MethodGet, "/task-1", nil))
+		handler := newHandler(projectRepoWithRole(model.RoleRead), tr, &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodGet, "/tasks/task-1", nil))
 		if w.Code != http.StatusNotFound {
 			t.Fatalf("status = %d, want 404", w.Code)
 		}
 	})
 }
 
-// ── PATCH /tasks/{id} ─────────────────────────────────────────────────────
-
 func TestPatchTask(t *testing.T) {
-	t.Run("PATCH with read role returns 403", func(t *testing.T) {
+	t.Run("PATCH /tasks/{id} with read role returns 403", func(t *testing.T) {
 		tr := taskRepoFound()
 		tr.UpdateFn = func(_ context.Context, _ *model.Task) error { return nil }
-		handler := tasks.NewRouter(
-			projectRepoWithRole(model.RoleRead),
-			tr,
-			&mock.TagRepo{},
-		)
-		w := serve(handler, newRequest(http.MethodPatch, "/task-1", map[string]any{"name": "New"}))
+		handler := newHandler(projectRepoWithRole(model.RoleRead), tr, &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodPatch, "/tasks/task-1", map[string]any{"name": "New"}))
 		if w.Code != http.StatusForbidden {
 			t.Fatalf("status = %d, want 403", w.Code)
 		}
 	})
 
-	t.Run("PATCH cross-project move without target access returns 403", func(t *testing.T) {
+	t.Run("PATCH /tasks/{id} cross-project move without target access returns 403", func(t *testing.T) {
 		tr := taskRepoFound()
 		tr.UpdateFn = func(_ context.Context, _ *model.Task) error { return nil }
-		// modify on proj-1 (source), no access on proj-2 (target)
 		pr := &mock.ProjectRepo{
+			GetFn: func(_ context.Context, _ string) (*model.Project, error) {
+				return &model.Project{ID: "proj-1", OwnerID: "user-1"}, nil
+			},
 			GetMemberRoleFn: func(_ context.Context, projectID, _ string) (string, error) {
 				if projectID == "proj-1" {
 					return model.RoleModify, nil
@@ -140,8 +138,9 @@ func TestPatchTask(t *testing.T) {
 				return "", repo.ErrNoAccess
 			},
 		}
-		handler := tasks.NewRouter(pr, tr, &mock.TagRepo{})
-		w := serve(handler, newRequest(http.MethodPatch, "/task-1", map[string]any{
+		handler := newHandler(pr, tr, &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodPatch, "/tasks/task-1", map[string]any{
 			"project_id": "proj-2",
 		}))
 		if w.Code != http.StatusForbidden {
@@ -149,15 +148,16 @@ func TestPatchTask(t *testing.T) {
 		}
 	})
 
-	t.Run("PATCH with position change calls Update with new position", func(t *testing.T) {
+	t.Run("PATCH /tasks/{id} with position change calls Update with new position", func(t *testing.T) {
 		var captured *model.Task
 		tr := taskRepoFound()
 		tr.UpdateFn = func(_ context.Context, t *model.Task) error {
 			captured = t
 			return nil
 		}
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
-		w := serve(handler, newRequest(http.MethodPatch, "/task-1", map[string]any{
+		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodPatch, "/tasks/task-1", map[string]any{
 			"position": 3,
 		}))
 		if w.Code != http.StatusOK {
@@ -171,22 +171,21 @@ func TestPatchTask(t *testing.T) {
 		}
 	})
 
-	t.Run(`PATCH with "parent_id": null clears parent`, func(t *testing.T) {
+	t.Run(`PATCH /tasks/{id} with "parent_id": null clears parent`, func(t *testing.T) {
 		var captured *model.Task
 		tr := taskRepoFound()
 		tr.UpdateFn = func(_ context.Context, t *model.Task) error {
 			captured = t
 			return nil
 		}
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
-		// Send explicit null for parent_id
-		body := `{"parent_id": null}`
-		req := httptest.NewRequest(http.MethodPatch, "/task-1", bytes.NewBufferString(body))
+		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		req := httptest.NewRequest(http.MethodPatch, "/tasks/task-1", bytes.NewBufferString(`{"parent_id": null}`))
 		req.Header.Set("X-User-ID", testUser.ID)
 		req.Header.Set("X-User-Name", testUser.Name)
 		req.Header.Set("X-User-Email", testUser.Email)
 		req.Header.Set("Content-Type", "application/json")
-		w := serve(handler, req)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", w.Code)
 		}
@@ -198,15 +197,16 @@ func TestPatchTask(t *testing.T) {
 		}
 	})
 
-	t.Run("PATCH omitting parent_id leaves parent unchanged", func(t *testing.T) {
+	t.Run("PATCH /tasks/{id} omitting parent_id leaves parent unchanged", func(t *testing.T) {
 		var captured *model.Task
-		tr := taskRepoFound() // returns task with ParentID = &"old-parent"
+		tr := taskRepoFound()
 		tr.UpdateFn = func(_ context.Context, t *model.Task) error {
 			captured = t
 			return nil
 		}
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
-		w := serve(handler, newRequest(http.MethodPatch, "/task-1", map[string]any{
+		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodPatch, "/tasks/task-1", map[string]any{
 			"name": "Updated name",
 		}))
 		if w.Code != http.StatusOK {
@@ -220,13 +220,14 @@ func TestPatchTask(t *testing.T) {
 		}
 	})
 
-	t.Run("PATCH with invalid status returns 409", func(t *testing.T) {
+	t.Run("PATCH /tasks/{id} with invalid status returns 409", func(t *testing.T) {
 		tr := taskRepoFound()
 		tr.UpdateFn = func(_ context.Context, _ *model.Task) error {
 			return repo.ErrConflict
 		}
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
-		w := serve(handler, newRequest(http.MethodPatch, "/task-1", map[string]any{
+		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodPatch, "/tasks/task-1", map[string]any{
 			"status": "nonexistent",
 		}))
 		if w.Code != http.StatusConflict {
@@ -235,38 +236,37 @@ func TestPatchTask(t *testing.T) {
 	})
 }
 
-// ── DELETE /tasks/{id} ────────────────────────────────────────────────────
-
 func TestDeleteTask(t *testing.T) {
-	t.Run("DELETE /task-1 returns 204", func(t *testing.T) {
+	t.Run("DELETE /tasks/{id} returns 204", func(t *testing.T) {
 		tr := taskRepoFound()
 		tr.DeleteFn = func(_ context.Context, _ string) error { return nil }
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
-		w := serve(handler, newRequest(http.MethodDelete, "/task-1", nil))
+		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodDelete, "/tasks/task-1", nil))
 		if w.Code != http.StatusNoContent {
 			t.Fatalf("status = %d, want 204", w.Code)
 		}
 	})
 }
 
-// ── POST /tasks/{id}/tasks ────────────────────────────────────────────────
-
 func TestCreateSubtask(t *testing.T) {
-	t.Run("POST /task-1/tasks missing name returns 400", func(t *testing.T) {
+	t.Run("POST /tasks/{id}/tasks missing name returns 400", func(t *testing.T) {
 		tr := taskRepoFound()
 		tr.CreateFn = func(_ context.Context, _ *model.Task) error { return nil }
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
-		w := serve(handler, newRequest(http.MethodPost, "/task-1/tasks", map[string]any{}))
+		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodPost, "/tasks/task-1/tasks", map[string]any{}))
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("status = %d, want 400", w.Code)
 		}
 	})
 
-	t.Run("POST /task-1/tasks with name returns 201", func(t *testing.T) {
+	t.Run("POST /tasks/{id}/tasks with name returns 201", func(t *testing.T) {
 		tr := taskRepoFound()
 		tr.CreateFn = func(_ context.Context, _ *model.Task) error { return nil }
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
-		w := serve(handler, newRequest(http.MethodPost, "/task-1/tasks", map[string]any{
+		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodPost, "/tasks/task-1/tasks", map[string]any{
 			"name": "Subtask",
 		}))
 		if w.Code != http.StatusCreated {
@@ -275,15 +275,14 @@ func TestCreateSubtask(t *testing.T) {
 	})
 }
 
-// ── POST /tasks/{id}/tags ─────────────────────────────────────────────────
-
 func TestAddTag(t *testing.T) {
-	t.Run("POST /task-1/tags returns 201", func(t *testing.T) {
+	t.Run("POST /tasks/{id}/tags returns 201", func(t *testing.T) {
 		tagRepo := &mock.TagRepo{
 			AddFn: func(_ context.Context, _, _ string) error { return nil },
 		}
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), taskRepoFound(), tagRepo)
-		w := serve(handler, newRequest(http.MethodPost, "/task-1/tags", map[string]any{
+		handler := newHandler(projectRepoWithRole(model.RoleModify), taskRepoFound(), tagRepo)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodPost, "/tasks/task-1/tags", map[string]any{
 			"tag": "bug",
 		}))
 		if w.Code != http.StatusCreated {
@@ -292,10 +291,8 @@ func TestAddTag(t *testing.T) {
 	})
 }
 
-// ── POST /tasks/{id}/complete ─────────────────────────────────────────────
-
 func TestCompleteTask(t *testing.T) {
-	t.Run("POST /task-1/complete non-recurring returns 200 with next=null", func(t *testing.T) {
+	t.Run("POST /tasks/{id}/complete non-recurring returns 200 with next=null", func(t *testing.T) {
 		completed := newTestTask()
 		completed.Status = "done"
 
@@ -303,8 +300,9 @@ func TestCompleteTask(t *testing.T) {
 		tr.CompleteTaskFn = func(_ context.Context, _, _ string) (*model.Task, *model.Task, error) {
 			return completed, nil, nil
 		}
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
-		w := serve(handler, newRequest(http.MethodPost, "/task-1/complete", map[string]any{
+		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodPost, "/tasks/task-1/complete", map[string]any{
 			"done_status": "done",
 		}))
 		if w.Code != http.StatusOK {
@@ -325,7 +323,7 @@ func TestCompleteTask(t *testing.T) {
 		}
 	})
 
-	t.Run("POST /task-1/complete recurring returns 200 with next task", func(t *testing.T) {
+	t.Run("POST /tasks/{id}/complete recurring returns 200 with next task", func(t *testing.T) {
 		completed := newTestTask()
 		completed.Status = "done"
 		nextDue := "2026-04-15"
@@ -341,8 +339,9 @@ func TestCompleteTask(t *testing.T) {
 		tr.CompleteTaskFn = func(_ context.Context, _, _ string) (*model.Task, *model.Task, error) {
 			return completed, nextTask, nil
 		}
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
-		w := serve(handler, newRequest(http.MethodPost, "/task-1/complete", map[string]any{
+		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodPost, "/tasks/task-1/complete", map[string]any{
 			"done_status": "done",
 		}))
 		if w.Code != http.StatusOK {
@@ -366,9 +365,10 @@ func TestCompleteTask(t *testing.T) {
 		}
 	})
 
-	t.Run("POST /task-1/complete with read role returns 403", func(t *testing.T) {
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleRead), taskRepoFound(), &mock.TagRepo{})
-		w := serve(handler, newRequest(http.MethodPost, "/task-1/complete", map[string]any{
+	t.Run("POST /tasks/{id}/complete with read role returns 403", func(t *testing.T) {
+		handler := newHandler(projectRepoWithRole(model.RoleRead), taskRepoFound(), &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodPost, "/tasks/task-1/complete", map[string]any{
 			"done_status": "done",
 		}))
 		if w.Code != http.StatusForbidden {
@@ -376,13 +376,14 @@ func TestCompleteTask(t *testing.T) {
 		}
 	})
 
-	t.Run("POST /task-1/complete invalid done_status returns 409", func(t *testing.T) {
+	t.Run("POST /tasks/{id}/complete invalid done_status returns 409", func(t *testing.T) {
 		tr := taskRepoFound()
 		tr.CompleteTaskFn = func(_ context.Context, _, _ string) (*model.Task, *model.Task, error) {
 			return nil, nil, repo.ErrConflict
 		}
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
-		w := serve(handler, newRequest(http.MethodPost, "/task-1/complete", map[string]any{
+		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodPost, "/tasks/task-1/complete", map[string]any{
 			"done_status": "nonexistent",
 		}))
 		if w.Code != http.StatusConflict {
@@ -391,116 +392,104 @@ func TestCompleteTask(t *testing.T) {
 	})
 }
 
-// rawRequest builds an authenticated request with a raw string body.
-func rawRequest(method, path, body string) *http.Request {
-	req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
-	req.Header.Set("X-User-ID", testUser.ID)
-	req.Header.Set("X-User-Name", testUser.Name)
-	req.Header.Set("X-User-Email", testUser.Email)
-	req.Header.Set("Content-Type", "application/json")
-	return req
-}
-
-// ── DELETE /tasks/{id}/tags/{tag} ─────────────────────────────────────────
-
 func TestDeleteTag(t *testing.T) {
-	t.Run("DELETE /task-1/tags/bug returns 204", func(t *testing.T) {
+	t.Run("DELETE /tasks/{id}/tags/{tag} returns 204", func(t *testing.T) {
 		tagRepo := &mock.TagRepo{
 			DeleteTagFn: func(_ context.Context, _, _ string) error { return nil },
 		}
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), taskRepoFound(), tagRepo)
-		w := serve(handler, newRequest(http.MethodDelete, "/task-1/tags/bug", nil))
+		handler := newHandler(projectRepoWithRole(model.RoleModify), taskRepoFound(), tagRepo)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodDelete, "/tasks/task-1/tags/bug", nil))
 		if w.Code != http.StatusNoContent {
 			t.Fatalf("status = %d, want 204", w.Code)
 		}
 	})
 }
 
-// ── taskCtx ───────────────────────────────────────────────────────────────────
-
 func TestTaskCtxInternalError(t *testing.T) {
-	t.Run("GET /{id} task Get returns non-NotFound error gives 500", func(t *testing.T) {
+	t.Run("GET /tasks/{id} task Get returns non-NotFound error gives 500", func(t *testing.T) {
 		tr := &mock.TaskRepo{
 			GetFn: func(_ context.Context, _ string) (*model.Task, error) {
 				return nil, errors.New("db error")
 			},
 		}
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleRead), tr, &mock.TagRepo{})
-		w := serve(handler, newRequest(http.MethodGet, "/task-1", nil))
+		handler := newHandler(projectRepoWithRole(model.RoleRead), tr, &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodGet, "/tasks/task-1", nil))
 		if w.Code != http.StatusInternalServerError {
 			t.Fatalf("status = %d, want 500", w.Code)
 		}
 	})
 }
 
-// ── Update ────────────────────────────────────────────────────────────────────
-
 func TestPatchTaskExtra(t *testing.T) {
-	t.Run("PATCH /{id} invalid JSON returns 400", func(t *testing.T) {
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), taskRepoFound(), &mock.TagRepo{})
-		w := serve(handler, rawRequest(http.MethodPatch, "/task-1", `{bad`))
+	t.Run("PATCH /tasks/{id} invalid JSON returns 400", func(t *testing.T) {
+		handler := newHandler(projectRepoWithRole(model.RoleModify), taskRepoFound(), &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, rawRequest(http.MethodPatch, "/tasks/task-1", `{bad`))
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("status = %d, want 400", w.Code)
 		}
 	})
 
-	t.Run("PATCH /{id} repo internal error returns 500", func(t *testing.T) {
+	t.Run("PATCH /tasks/{id} repo internal error returns 500", func(t *testing.T) {
 		tr := taskRepoFound()
 		tr.UpdateFn = func(_ context.Context, _ *model.Task) error { return errors.New("db error") }
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
-		w := serve(handler, newRequest(http.MethodPatch, "/task-1", map[string]any{"name": "X"}))
+		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodPatch, "/tasks/task-1", map[string]any{"name": "X"}))
 		if w.Code != http.StatusInternalServerError {
 			t.Fatalf("status = %d, want 500", w.Code)
 		}
 	})
 }
 
-// ── Delete ────────────────────────────────────────────────────────────────────
-
 func TestDeleteTaskExtra(t *testing.T) {
-	t.Run("DELETE /{id} read role returns 403", func(t *testing.T) {
+	t.Run("DELETE /tasks/{id} read role returns 403", func(t *testing.T) {
 		tr := taskRepoFound()
 		tr.DeleteFn = func(_ context.Context, _ string) error { return nil }
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleRead), tr, &mock.TagRepo{})
-		w := serve(handler, newRequest(http.MethodDelete, "/task-1", nil))
+		handler := newHandler(projectRepoWithRole(model.RoleRead), tr, &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodDelete, "/tasks/task-1", nil))
 		if w.Code != http.StatusForbidden {
 			t.Fatalf("status = %d, want 403", w.Code)
 		}
 	})
 
-	t.Run("DELETE /{id} repo error returns 500", func(t *testing.T) {
+	t.Run("DELETE /tasks/{id} repo error returns 500", func(t *testing.T) {
 		tr := taskRepoFound()
 		tr.DeleteFn = func(_ context.Context, _ string) error { return errors.New("db error") }
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
-		w := serve(handler, newRequest(http.MethodDelete, "/task-1", nil))
+		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodDelete, "/tasks/task-1", nil))
 		if w.Code != http.StatusInternalServerError {
 			t.Fatalf("status = %d, want 500", w.Code)
 		}
 	})
 }
 
-// ── Subtasks ──────────────────────────────────────────────────────────────────
-
 func TestListSubtasks(t *testing.T) {
-	t.Run("GET /{id}/tasks success returns 200", func(t *testing.T) {
+	t.Run("GET /tasks/{id}/tasks success returns 200", func(t *testing.T) {
 		tr := taskRepoFound()
 		tr.ListChildrenFn = func(_ context.Context, _ string, _ *string, _ repo.TaskFilter) ([]*model.Task, error) {
 			return []*model.Task{}, nil
 		}
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleRead), tr, &mock.TagRepo{})
-		w := serve(handler, newRequest(http.MethodGet, "/task-1/tasks", nil))
+		handler := newHandler(projectRepoWithRole(model.RoleRead), tr, &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodGet, "/tasks/task-1/tasks", nil))
 		if w.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", w.Code)
 		}
 	})
 
-	t.Run("GET /{id}/tasks repo error returns 500", func(t *testing.T) {
+	t.Run("GET /tasks/{id}/tasks repo error returns 500", func(t *testing.T) {
 		tr := taskRepoFound()
 		tr.ListChildrenFn = func(_ context.Context, _ string, _ *string, _ repo.TaskFilter) ([]*model.Task, error) {
 			return nil, errors.New("db error")
 		}
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleRead), tr, &mock.TagRepo{})
-		w := serve(handler, newRequest(http.MethodGet, "/task-1/tasks", nil))
+		handler := newHandler(projectRepoWithRole(model.RoleRead), tr, &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodGet, "/tasks/task-1/tasks", nil))
 		if w.Code != http.StatusInternalServerError {
 			t.Fatalf("status = %d, want 500", w.Code)
 		}
@@ -508,54 +497,56 @@ func TestListSubtasks(t *testing.T) {
 }
 
 func TestCreateSubtaskExtra(t *testing.T) {
-	t.Run("POST /{id}/tasks read role returns 403", func(t *testing.T) {
+	t.Run("POST /tasks/{id}/tasks read role returns 403", func(t *testing.T) {
 		tr := taskRepoFound()
 		tr.CreateFn = func(_ context.Context, _ *model.Task) error { return nil }
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleRead), tr, &mock.TagRepo{})
-		w := serve(handler, newRequest(http.MethodPost, "/task-1/tasks", map[string]any{"name": "Sub"}))
+		handler := newHandler(projectRepoWithRole(model.RoleRead), tr, &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodPost, "/tasks/task-1/tasks", map[string]any{"name": "Sub"}))
 		if w.Code != http.StatusForbidden {
 			t.Fatalf("status = %d, want 403", w.Code)
 		}
 	})
 }
 
-// ── Tags ──────────────────────────────────────────────────────────────────────
-
 func TestListTags(t *testing.T) {
-	t.Run("GET /{id}/tags success returns 200", func(t *testing.T) {
+	t.Run("GET /tasks/{id}/tags success returns 200", func(t *testing.T) {
 		tagRepo := &mock.TagRepo{
 			ListForTaskFn: func(_ context.Context, _ string) ([]string, error) {
 				return []string{"bug", "urgent"}, nil
 			},
 		}
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleRead), taskRepoFound(), tagRepo)
-		w := serve(handler, newRequest(http.MethodGet, "/task-1/tags", nil))
+		handler := newHandler(projectRepoWithRole(model.RoleRead), taskRepoFound(), tagRepo)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodGet, "/tasks/task-1/tags", nil))
 		if w.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", w.Code)
 		}
 	})
 
-	t.Run("GET /{id}/tags nil list returns empty array", func(t *testing.T) {
+	t.Run("GET /tasks/{id}/tags nil list returns empty array", func(t *testing.T) {
 		tagRepo := &mock.TagRepo{
 			ListForTaskFn: func(_ context.Context, _ string) ([]string, error) {
 				return nil, nil
 			},
 		}
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleRead), taskRepoFound(), tagRepo)
-		w := serve(handler, newRequest(http.MethodGet, "/task-1/tags", nil))
+		handler := newHandler(projectRepoWithRole(model.RoleRead), taskRepoFound(), tagRepo)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodGet, "/tasks/task-1/tags", nil))
 		if w.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", w.Code)
 		}
 	})
 
-	t.Run("GET /{id}/tags repo error returns 500", func(t *testing.T) {
+	t.Run("GET /tasks/{id}/tags repo error returns 500", func(t *testing.T) {
 		tagRepo := &mock.TagRepo{
 			ListForTaskFn: func(_ context.Context, _ string) ([]string, error) {
 				return nil, errors.New("db error")
 			},
 		}
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleRead), taskRepoFound(), tagRepo)
-		w := serve(handler, newRequest(http.MethodGet, "/task-1/tags", nil))
+		handler := newHandler(projectRepoWithRole(model.RoleRead), taskRepoFound(), tagRepo)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodGet, "/tasks/task-1/tags", nil))
 		if w.Code != http.StatusInternalServerError {
 			t.Fatalf("status = %d, want 500", w.Code)
 		}
@@ -563,20 +554,22 @@ func TestListTags(t *testing.T) {
 }
 
 func TestAddTagExtra(t *testing.T) {
-	t.Run("POST /{id}/tags whitespace-only tag returns 400", func(t *testing.T) {
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), taskRepoFound(), &mock.TagRepo{})
-		w := serve(handler, newRequest(http.MethodPost, "/task-1/tags", map[string]any{"tag": "   "}))
+	t.Run("POST /tasks/{id}/tags whitespace-only tag returns 400", func(t *testing.T) {
+		handler := newHandler(projectRepoWithRole(model.RoleModify), taskRepoFound(), &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodPost, "/tasks/task-1/tags", map[string]any{"tag": "   "}))
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("status = %d, want 400", w.Code)
 		}
 	})
 
-	t.Run("POST /{id}/tags repo error returns 500", func(t *testing.T) {
+	t.Run("POST /tasks/{id}/tags repo error returns 500", func(t *testing.T) {
 		tagRepo := &mock.TagRepo{
 			AddFn: func(_ context.Context, _, _ string) error { return errors.New("db error") },
 		}
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), taskRepoFound(), tagRepo)
-		w := serve(handler, newRequest(http.MethodPost, "/task-1/tags", map[string]any{"tag": "bug"}))
+		handler := newHandler(projectRepoWithRole(model.RoleModify), taskRepoFound(), tagRepo)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodPost, "/tasks/task-1/tags", map[string]any{"tag": "bug"}))
 		if w.Code != http.StatusInternalServerError {
 			t.Fatalf("status = %d, want 500", w.Code)
 		}
@@ -584,20 +577,22 @@ func TestAddTagExtra(t *testing.T) {
 }
 
 func TestDeleteTagExtra(t *testing.T) {
-	t.Run("DELETE /{id}/tags/{tag} read role returns 403", func(t *testing.T) {
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleRead), taskRepoFound(), &mock.TagRepo{})
-		w := serve(handler, newRequest(http.MethodDelete, "/task-1/tags/bug", nil))
+	t.Run("DELETE /tasks/{id}/tags/{tag} read role returns 403", func(t *testing.T) {
+		handler := newHandler(projectRepoWithRole(model.RoleRead), taskRepoFound(), &mock.TagRepo{})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodDelete, "/tasks/task-1/tags/bug", nil))
 		if w.Code != http.StatusForbidden {
 			t.Fatalf("status = %d, want 403", w.Code)
 		}
 	})
 
-	t.Run("DELETE /{id}/tags/{tag} repo error returns 500", func(t *testing.T) {
+	t.Run("DELETE /tasks/{id}/tags/{tag} repo error returns 500", func(t *testing.T) {
 		tagRepo := &mock.TagRepo{
 			DeleteTagFn: func(_ context.Context, _, _ string) error { return errors.New("db error") },
 		}
-		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), taskRepoFound(), tagRepo)
-		w := serve(handler, newRequest(http.MethodDelete, "/task-1/tags/bug", nil))
+		handler := newHandler(projectRepoWithRole(model.RoleModify), taskRepoFound(), tagRepo)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newRequest(http.MethodDelete, "/tasks/task-1/tags/bug", nil))
 		if w.Code != http.StatusInternalServerError {
 			t.Fatalf("status = %d, want 500", w.Code)
 		}

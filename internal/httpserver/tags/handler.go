@@ -2,14 +2,10 @@ package tags
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/danielgtaylor/huma/v2/adapters/humachi"
-	"github.com/go-chi/chi/v5"
 
 	"github.com/js-beaulieu/tasks-api/internal/httpserver/middleware"
-	"github.com/js-beaulieu/tasks-api/internal/httpserver/render"
 	"github.com/js-beaulieu/tasks-api/internal/repo"
 )
 
@@ -19,22 +15,7 @@ type Handler struct {
 
 func Register(api huma.API, tags repo.TagRepo) {
 	h := &Handler{tags: tags}
-	register(api, h, "/tags")
-}
-
-func NewRouter(tags repo.TagRepo) http.Handler {
-	r := chi.NewRouter()
-	api := humachi.New(r, render.HumaConfig())
-	register(api, &Handler{tags: tags}, "")
-	return r
-}
-
-func register(api huma.API, h *Handler, prefix string) {
-	path := prefix
-	if path == "" {
-		path = "/"
-	}
-	huma.Get(api, path, h.listTags)
+	huma.Get(api, "/tags", h.listTags)
 }
 
 type listTagsOutput struct {

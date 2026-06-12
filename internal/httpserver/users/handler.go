@@ -3,15 +3,11 @@ package users
 import (
 	"context"
 	"errors"
-	"net/http"
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/danielgtaylor/huma/v2/adapters/humachi"
-	"github.com/go-chi/chi/v5"
 
 	"github.com/js-beaulieu/tasks-api/internal/httpserver/middleware"
-	"github.com/js-beaulieu/tasks-api/internal/httpserver/render"
 	"github.com/js-beaulieu/tasks-api/internal/model"
 	"github.com/js-beaulieu/tasks-api/internal/repo"
 )
@@ -22,27 +18,9 @@ type Handler struct {
 
 func Register(api huma.API, users repo.UserRepo) {
 	h := &Handler{users: users}
-	register(api, h, "/users")
-}
-
-func NewRouter(users repo.UserRepo) http.Handler {
-	r := chi.NewRouter()
-	api := humachi.New(r, render.HumaConfig())
-	register(api, &Handler{users: users}, "")
-	return r
-}
-
-func register(api huma.API, h *Handler, prefix string) {
-	huma.Get(api, route(prefix, "/me"), h.getMe)
-	huma.Patch(api, route(prefix, "/me"), h.updateMe)
-	huma.Get(api, route(prefix, "/{userID}"), h.getByID)
-}
-
-func route(prefix, path string) string {
-	if prefix == "" {
-		return path
-	}
-	return prefix + path
+	huma.Get(api, "/users/me", h.getMe)
+	huma.Patch(api, "/users/me", h.updateMe)
+	huma.Get(api, "/users/{userID}", h.getByID)
 }
 
 type meOutput struct {
