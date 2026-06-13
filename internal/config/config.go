@@ -9,6 +9,7 @@ import (
 type Config struct {
 	Port               string
 	PGConnectionString string
+	OpenAPIServerURL   string
 	LogFormat          string
 	LogLevel           slog.Level
 	LogDetailed        bool
@@ -26,6 +27,9 @@ func Load() Config {
 	}
 	if v := os.Getenv("PG_CONNECTION_STRING"); v != "" {
 		cfg.PGConnectionString = v
+	}
+	if v := os.Getenv("OPENAPI_SERVER_URL"); v != "" {
+		cfg.OpenAPIServerURL = v
 	}
 	if v := os.Getenv("LOG_FORMAT"); v != "" {
 		cfg.LogFormat = v

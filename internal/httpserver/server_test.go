@@ -36,6 +36,19 @@ func TestNew(t *testing.T) {
 			t.Fatalf("body = %q, want OpenAPI document", w.Body.String())
 		}
 	})
+
+	t.Run("docs use configured OpenAPI server path", func(t *testing.T) {
+		h := New(store, config.Config{OpenAPIServerURL: "/tasks"})
+		req := httptest.NewRequest(http.MethodGet, "/docs", nil)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		if !strings.Contains(w.Body.String(), `apiDescriptionUrl="/tasks/openapi.yaml"`) {
+			t.Fatalf("body = %q, want prefixed OpenAPI URL", w.Body.String())
+		}
+	})
 }
 
 func TestHealthHandler(t *testing.T) {

@@ -43,6 +43,8 @@ With the server running locally, the REST API exposes:
 
 Auth for protected routes uses `X-User-ID`.
 
+Set `OPENAPI_SERVER_URL` when serving behind an external path prefix so generated docs load the correct spec URL, for example `OPENAPI_SERVER_URL=/tasks`.
+
 ## Testing Notes
 
 Integration tests use [`testcontainers-go`](https://golang.testcontainers.org/modules/postgres/) to start a real Postgres instance automatically. Docker must be available when running integration or coverage tasks.

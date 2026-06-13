@@ -22,3 +22,20 @@ func TestLoadPGConnectionString(t *testing.T) {
 		}
 	})
 }
+
+func TestLoadOpenAPIServerURL(t *testing.T) {
+	t.Run("defaults to empty when OPENAPI_SERVER_URL unset", func(t *testing.T) {
+		cfg := Load()
+		if cfg.OpenAPIServerURL != "" {
+			t.Errorf("OpenAPIServerURL = %q, want empty", cfg.OpenAPIServerURL)
+		}
+	})
+
+	t.Run("reads OPENAPI_SERVER_URL from env", func(t *testing.T) {
+		t.Setenv("OPENAPI_SERVER_URL", "/tasks")
+		cfg := Load()
+		if cfg.OpenAPIServerURL != "/tasks" {
+			t.Errorf("OpenAPIServerURL = %q, want /tasks", cfg.OpenAPIServerURL)
+		}
+	})
+}
