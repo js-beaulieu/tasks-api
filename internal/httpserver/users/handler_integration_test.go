@@ -4,10 +4,12 @@ package users_test
 
 import (
 	"net/http"
+	"sort"
 	"testing"
 
 	"github.com/js-beaulieu/tasks-api/internal/model"
 	httptestutil "github.com/js-beaulieu/tasks-api/internal/testing/http"
+	"github.com/js-beaulieu/tasks-api/internal/testing/seed"
 )
 
 func TestGetMe_ExistingUser(t *testing.T) {
@@ -162,5 +164,89 @@ func TestGetUserByID_Missing(t *testing.T) {
 	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/users/nonexistent-id", Body: "", UserID: env.User.ID, Headers: nil})
 	if res.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusNotFound)
+	}
+}
+
+func TestListUsers_BatchLookup(t *testing.T) {
+	env := httptestutil.NewEnv(t)
+
+	u2 := seed.User(t, env.Store, seed.UserInput{ID: "u-batch-2", Name: "Bob", Email: "bob-batch@example.com"})
+	u3 := seed.User(t, env.Store, seed.UserInput{ID: "u-batch-3", Name: "Carol", Email: "carol-batch@example.com"})
+
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{
+		Method: http.MethodGet,
+		Path:   "/users?ids=" + env.User.ID + "&ids=" + u2.ID + "&ids=" + u3.ID,
+		UserID: env.User.ID,
+	})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
+
+	var got []*model.User
+	httptestutil.Decode(t, res, &got)
+	if len(got) != 3 {
+		t.Fatalf("len = %d, want 3", len(got))
+	}
+	sort.Slice(got, func(i, j int) bool { return got[i].ID < got[j].ID })
+	want := []*model.User{env.User, u2, u3}
+	sort.Slice(want, func(i, j int) bool { return want[i].ID < want[j].ID })
+	for i := range got {
+		if got[i].ID != want[i].ID {
+			t.Errorf("got[%d].ID = %q, want %q", i, got[i].ID, want[i].ID)
+		}
+	}
+}
+
+func TestListUsers_NonExistentIDsOmitted(t *testing.T) {
+	env := httptestutil.NewEnv(t)
+
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{
+		Method: http.MethodGet,
+		Path:   "/users?ids=" + env.User.ID + "&ids=nonexistent-id",
+		UserID: env.User.ID,
+	})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
+
+	var got []*model.User
+	httptestutil.Decode(t, res, &got)
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1", len(got))
+	}
+	if got[0].ID != env.User.ID {
+		t.Errorf("ID = %q, want %q", got[0].ID, env.User.ID)
+	}
+}
+
+func TestListUsers_EmptyIDsReturns422(t *testing.T) {
+	env := httptestutil.NewEnv(t)
+
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{
+		Method: http.MethodGet,
+		Path:   "/users",
+		UserID: env.User.ID,
+	})
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusUnprocessableEntity)
+	}
+}
+
+func TestListUsers_NoMatchesReturnsEmptyArray(t *testing.T) {
+	env := httptestutil.NewEnv(t)
+
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{
+		Method: http.MethodGet,
+		Path:   "/users?ids=nonexistent-1&ids=nonexistent-2",
+		UserID: env.User.ID,
+	})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
+
+	var got []*model.User
+	httptestutil.Decode(t, res, &got)
+	if len(got) != 0 {
+		t.Fatalf("len = %d, want 0", len(got))
 	}
 }

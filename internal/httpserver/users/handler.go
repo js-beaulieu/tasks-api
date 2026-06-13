@@ -20,9 +20,43 @@ func RegisterRoutes(api huma.API, users repo.UserRepo, prefix string) {
 	h := &Handler{users: users}
 	group := huma.NewGroup(api, prefix)
 
+	huma.Get(group, rootPath(prefix), h.list)
 	huma.Get(group, "/me", h.getMe)
 	huma.Patch(group, "/me", h.updateMe)
 	huma.Get(group, "/{userID}", h.getByID)
+}
+
+func rootPath(prefix string) string {
+	if prefix == "" {
+		return "/"
+	}
+	return ""
+}
+
+type listUsersInput struct {
+	Ids    []string `query:"ids,explode"`
+	Search string   `query:"search"`
+}
+
+type userListOutput struct {
+	Body []*model.User
+}
+
+func (h *Handler) list(ctx context.Context, input *listUsersInput) (*userListOutput, error) {
+	if len(input.Ids) > 0 && input.Search != "" {
+		return nil, huma.Error422UnprocessableEntity("ids and search are mutually exclusive")
+	}
+	if len(input.Ids) == 0 {
+		return nil, huma.Error422UnprocessableEntity("ids is required")
+	}
+	users, err := h.users.ListByIDs(ctx, input.Ids)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("internal error")
+	}
+	if users == nil {
+		users = []*model.User{}
+	}
+	return &userListOutput{Body: users}, nil
 }
 
 type getMeOutput struct {

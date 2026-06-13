@@ -133,3 +133,56 @@ func TestUsers_Delete(t *testing.T) {
 		}
 	})
 }
+
+func TestUsers_ListByIDs(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+
+	t.Run("returns matching users", func(t *testing.T) {
+		seed.User(t, store, seed.UserInput{ID: "lb-1", Name: "Alice", Email: "alice-lb@example.com"})
+		seed.User(t, store, seed.UserInput{ID: "lb-2", Name: "Bob", Email: "bob-lb@example.com"})
+
+		users, err := store.Users.ListByIDs(ctx, []string{"lb-1", "lb-2"})
+		if err != nil {
+			t.Fatalf("ListByIDs: %v", err)
+		}
+		if len(users) != 2 {
+			t.Fatalf("len = %d, want 2", len(users))
+		}
+	})
+
+	t.Run("omits non-existent IDs", func(t *testing.T) {
+		seed.User(t, store, seed.UserInput{ID: "lb-3", Name: "Carol", Email: "carol-lb@example.com"})
+
+		users, err := store.Users.ListByIDs(ctx, []string{"lb-3", "nonexistent"})
+		if err != nil {
+			t.Fatalf("ListByIDs: %v", err)
+		}
+		if len(users) != 1 {
+			t.Fatalf("len = %d, want 1", len(users))
+		}
+		if users[0].ID != "lb-3" {
+			t.Errorf("ID = %q, want %q", users[0].ID, "lb-3")
+		}
+	})
+
+	t.Run("returns empty slice for no matches", func(t *testing.T) {
+		users, err := store.Users.ListByIDs(ctx, []string{"no-match-1", "no-match-2"})
+		if err != nil {
+			t.Fatalf("ListByIDs: %v", err)
+		}
+		if len(users) != 0 {
+			t.Errorf("len = %d, want 0", len(users))
+		}
+	})
+
+	t.Run("returns nil for empty input", func(t *testing.T) {
+		users, err := store.Users.ListByIDs(ctx, nil)
+		if err != nil {
+			t.Fatalf("ListByIDs: %v", err)
+		}
+		if users != nil {
+			t.Errorf("expected nil, got %v", users)
+		}
+	})
+}
