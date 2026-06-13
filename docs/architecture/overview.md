@@ -21,7 +21,7 @@ The top-level mux applies request logging around both the REST API and the MCP e
 | `internal/model` | Domain structs: User, Project, ProjectMember, ProjectStatus, Task |
 | `internal/repo` | Repository interfaces + sentinel errors (`ErrNotFound`, `ErrNoAccess`, `ErrConflict`) |
 | `internal/store/postgres` | Concrete Postgres implementations; goose migrations in `migrations/` |
-| `internal/config` | Config struct loaded from env (`PORT`, `PG_CONNECTION_STRING`, `LOG_FORMAT`, `LOG_LEVEL`, `LOG_DETAILED`) |
+| `internal/config` | Config struct loaded from env (`PORT`, `PG_CONNECTION_STRING`, `OPENAPI_SERVER_URL`, `LOG_FORMAT`, `LOG_LEVEL`, `LOG_DETAILED`) |
 | `internal/logger` | slog-based logger; `logger.FromCtx` / `logger.IntoCtx` context helpers |
 | `internal/httpserver` | Huma REST API wiring; sub-packages: `middleware`, `projects`, `tasks`, `tags`, `users`, `render` |
 | `internal/mcpserver` | MCP server wiring + `withLogging` wrapper; sub-package: `tools` |
