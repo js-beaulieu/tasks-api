@@ -96,7 +96,7 @@ func TestListProjects(t *testing.T) {
 // ── Create project ─────────────────────────────────────────────────────────
 
 func TestCreateProject(t *testing.T) {
-	t.Run("POST /projects missing name returns 400", func(t *testing.T) {
+	t.Run("POST /projects missing name returns 422", func(t *testing.T) {
 		pr := &mock.ProjectRepo{
 			CreateFn: func(_ context.Context, _ *model.Project, _ ...string) error { return nil },
 		}
@@ -104,8 +104,8 @@ func TestCreateProject(t *testing.T) {
 		req := newRequest(http.MethodPost, "/", map[string]any{})
 		w := serve(handler, defaultUserRepo(), req)
 
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("status = %d, want 400", w.Code)
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422", w.Code)
 		}
 	})
 
@@ -240,7 +240,7 @@ func TestMembers(t *testing.T) {
 		}
 	})
 
-	t.Run("POST /projects/{id}/members invalid role returns 400", func(t *testing.T) {
+	t.Run("POST /projects/{id}/members invalid role returns 422", func(t *testing.T) {
 		pr := projectRepoWithAccess(model.RoleAdmin)
 		handler := projects.NewRouter(pr, &mock.TaskRepo{})
 		req := newRequest(http.MethodPost, "/proj-1/members", map[string]any{
@@ -249,8 +249,8 @@ func TestMembers(t *testing.T) {
 		})
 		w := serve(handler, defaultUserRepo(), req)
 
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("status = %d, want 400", w.Code)
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422", w.Code)
 		}
 	})
 }
@@ -282,14 +282,14 @@ func TestStatuses(t *testing.T) {
 		}
 	})
 
-	t.Run("POST /projects/{id}/statuses empty status returns 400", func(t *testing.T) {
+	t.Run("POST /projects/{id}/statuses empty status returns 422", func(t *testing.T) {
 		pr := projectRepoWithAccess(model.RoleAdmin)
 		handler := projects.NewRouter(pr, &mock.TaskRepo{})
 		req := newRequest(http.MethodPost, "/proj-1/statuses", map[string]any{"status": "   "})
 		w := serve(handler, defaultUserRepo(), req)
 
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("status = %d, want 400", w.Code)
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422", w.Code)
 		}
 	})
 }
@@ -429,19 +429,19 @@ func TestListMembers(t *testing.T) {
 }
 
 func TestAddMemberExtra(t *testing.T) {
-	t.Run("POST /{id}/members missing user_id returns 400", func(t *testing.T) {
+	t.Run("POST /{id}/members missing user_id returns 422", func(t *testing.T) {
 		pr := projectRepoWithAccess(model.RoleAdmin)
 		w := serve(projects.NewRouter(pr, &mock.TaskRepo{}), defaultUserRepo(), newRequest(http.MethodPost, "/proj-1/members", map[string]any{"user_id": "   ", "role": model.RoleRead}))
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("status = %d, want 400", w.Code)
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422", w.Code)
 		}
 	})
 
-	t.Run("POST /{id}/members cannot add yourself returns 400", func(t *testing.T) {
+	t.Run("POST /{id}/members cannot add yourself returns 422", func(t *testing.T) {
 		pr := projectRepoWithAccess(model.RoleAdmin)
 		w := serve(projects.NewRouter(pr, &mock.TaskRepo{}), defaultUserRepo(), newRequest(http.MethodPost, "/proj-1/members", map[string]any{"user_id": "user-1", "role": model.RoleRead}))
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("status = %d, want 400", w.Code)
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422", w.Code)
 		}
 	})
 
@@ -473,19 +473,19 @@ func TestUpdateMember(t *testing.T) {
 		}
 	})
 
-	t.Run("PATCH /{id}/members/{userID} invalid role returns 400", func(t *testing.T) {
+	t.Run("PATCH /{id}/members/{userID} invalid role returns 422", func(t *testing.T) {
 		pr := projectRepoWithAccess(model.RoleAdmin)
 		w := serve(projects.NewRouter(pr, &mock.TaskRepo{}), defaultUserRepo(), newRequest(http.MethodPatch, "/proj-1/members/user-2", map[string]any{"role": "owner"}))
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("status = %d, want 400", w.Code)
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422", w.Code)
 		}
 	})
 
-	t.Run("PATCH /{id}/members/{userID} changing owner role returns 400", func(t *testing.T) {
+	t.Run("PATCH /{id}/members/{userID} changing owner role returns 422", func(t *testing.T) {
 		pr := projectRepoWithAccess(model.RoleAdmin)
 		w := serve(projects.NewRouter(pr, &mock.TaskRepo{}), defaultUserRepo(), newRequest(http.MethodPatch, "/proj-1/members/user-1", map[string]any{"role": model.RoleRead}))
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("status = %d, want 400", w.Code)
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422", w.Code)
 		}
 	})
 
@@ -509,11 +509,11 @@ func TestRemoveMember(t *testing.T) {
 		}
 	})
 
-	t.Run("DELETE /{id}/members/{userID} removing owner returns 400", func(t *testing.T) {
+	t.Run("DELETE /{id}/members/{userID} removing owner returns 422", func(t *testing.T) {
 		pr := projectRepoWithAccess(model.RoleAdmin)
 		w := serve(projects.NewRouter(pr, &mock.TaskRepo{}), defaultUserRepo(), newRequest(http.MethodDelete, "/proj-1/members/user-1", nil))
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("status = %d, want 400", w.Code)
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422", w.Code)
 		}
 	})
 

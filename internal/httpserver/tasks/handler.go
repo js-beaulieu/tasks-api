@@ -224,7 +224,7 @@ func (h *Handler) completeTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.TrimSpace(body.DoneStatus) == "" {
-		render.BadRequest(w, "done_status is required")
+		render.UnprocessableEntity(w, "done_status is required")
 		return
 	}
 	t := taskFromCtx(r.Context())
@@ -272,7 +272,7 @@ func (h *Handler) createSubtask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.TrimSpace(body.Name) == "" {
-		render.BadRequest(w, "name is required")
+		render.UnprocessableEntity(w, "name is required")
 		return
 	}
 	parent := taskFromCtx(r.Context())
@@ -330,7 +330,7 @@ func (h *Handler) addTag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.TrimSpace(body.Tag) == "" {
-		render.BadRequest(w, "tag is required")
+		render.UnprocessableEntity(w, "tag is required")
 		return
 	}
 	t := taskFromCtx(r.Context())

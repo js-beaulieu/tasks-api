@@ -252,13 +252,13 @@ func TestDeleteTask(t *testing.T) {
 // ── POST /tasks/{id}/tasks ────────────────────────────────────────────────
 
 func TestCreateSubtask(t *testing.T) {
-	t.Run("POST /task-1/tasks missing name returns 400", func(t *testing.T) {
+	t.Run("POST /task-1/tasks missing name returns 422", func(t *testing.T) {
 		tr := taskRepoFound()
 		tr.CreateFn = func(_ context.Context, _ *model.Task) error { return nil }
 		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
 		w := serve(handler, newRequest(http.MethodPost, "/task-1/tasks", map[string]any{}))
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("status = %d, want 400", w.Code)
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422", w.Code)
 		}
 	})
 
@@ -563,11 +563,11 @@ func TestListTags(t *testing.T) {
 }
 
 func TestAddTagExtra(t *testing.T) {
-	t.Run("POST /{id}/tags whitespace-only tag returns 400", func(t *testing.T) {
+	t.Run("POST /{id}/tags whitespace-only tag returns 422", func(t *testing.T) {
 		handler := tasks.NewRouter(projectRepoWithRole(model.RoleModify), taskRepoFound(), &mock.TagRepo{})
 		w := serve(handler, newRequest(http.MethodPost, "/task-1/tags", map[string]any{"tag": "   "}))
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("status = %d, want 400", w.Code)
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422", w.Code)
 		}
 	})
 

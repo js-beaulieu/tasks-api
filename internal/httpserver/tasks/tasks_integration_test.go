@@ -406,8 +406,8 @@ func TestTasksIntegration_Complete_BlankDoneStatus(t *testing.T) {
 	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + task.ID + "/complete", Body: map[string]any{
 		"done_status": "",
 	}, UserID: env.User.ID})
-	if res.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusUnprocessableEntity)
 	}
 }
 
@@ -562,8 +562,8 @@ func TestTasksIntegration_CreateSubtask_BlankName(t *testing.T) {
 	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + parent.ID + "/tasks", Body: map[string]any{
 		"name": "",
 	}, UserID: env.User.ID})
-	if res.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusUnprocessableEntity)
 	}
 }
 
@@ -733,8 +733,8 @@ func TestTasksIntegration_AddTag_BlankTag(t *testing.T) {
 	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + task.ID + "/tags", Body: map[string]any{
 		"tag": "",
 	}, UserID: env.User.ID})
-	if res.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusUnprocessableEntity)
 	}
 }
 

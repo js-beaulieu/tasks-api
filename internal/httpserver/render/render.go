@@ -27,6 +27,10 @@ func BadRequest(w http.ResponseWriter, msg string) {
 	Error(w, http.StatusBadRequest, msg)
 }
 
+func UnprocessableEntity(w http.ResponseWriter, msg string) {
+	Error(w, http.StatusUnprocessableEntity, msg)
+}
+
 func NoContent(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNoContent)

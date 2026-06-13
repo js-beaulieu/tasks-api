@@ -119,7 +119,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.TrimSpace(body.Name) == "" {
-		render.BadRequest(w, "name is required")
+		render.UnprocessableEntity(w, "name is required")
 		return
 	}
 	user := middleware.UserFromCtx(r.Context())
@@ -220,16 +220,16 @@ func (h *Handler) addMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.TrimSpace(body.UserID) == "" {
-		render.BadRequest(w, "user_id is required")
+		render.UnprocessableEntity(w, "user_id is required")
 		return
 	}
 	if !validRole(body.Role) {
-		render.BadRequest(w, "role must be read, modify, or admin")
+		render.UnprocessableEntity(w, "role must be read, modify, or admin")
 		return
 	}
 	caller := middleware.UserFromCtx(r.Context())
 	if body.UserID == caller.ID {
-		render.BadRequest(w, "cannot add yourself as a member")
+		render.UnprocessableEntity(w, "cannot add yourself as a member")
 		return
 	}
 	p := projectFromCtx(r.Context())
@@ -256,13 +256,13 @@ func (h *Handler) updateMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !validRole(body.Role) {
-		render.BadRequest(w, "role must be read, modify, or admin")
+		render.UnprocessableEntity(w, "role must be read, modify, or admin")
 		return
 	}
 	p := projectFromCtx(r.Context())
 	userID := chi.URLParam(r, "userID")
 	if userID == p.OwnerID {
-		render.BadRequest(w, "cannot change role of project owner")
+		render.UnprocessableEntity(w, "cannot change role of project owner")
 		return
 	}
 	if err := h.projects.UpdateMemberRole(r.Context(), p.ID, userID, body.Role); err != nil {
@@ -280,7 +280,7 @@ func (h *Handler) removeMember(w http.ResponseWriter, r *http.Request) {
 	p := projectFromCtx(r.Context())
 	userID := chi.URLParam(r, "userID")
 	if userID == p.OwnerID {
-		render.BadRequest(w, "cannot remove project owner")
+		render.UnprocessableEntity(w, "cannot remove project owner")
 		return
 	}
 	if err := h.projects.RemoveMember(r.Context(), p.ID, userID); err != nil {
@@ -317,7 +317,7 @@ func (h *Handler) addStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.TrimSpace(body.Status) == "" {
-		render.BadRequest(w, "status is required")
+		render.UnprocessableEntity(w, "status is required")
 		return
 	}
 	p := projectFromCtx(r.Context())
@@ -389,7 +389,7 @@ func (h *Handler) createTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.TrimSpace(body.Name) == "" {
-		render.BadRequest(w, "name is required")
+		render.UnprocessableEntity(w, "name is required")
 		return
 	}
 	p := projectFromCtx(r.Context())

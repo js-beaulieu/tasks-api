@@ -62,14 +62,14 @@ func (h *Handler) updateMe(w http.ResponseWriter, r *http.Request) {
 	u := middleware.UserFromCtx(r.Context())
 	if body.Name != nil {
 		if strings.TrimSpace(*body.Name) == "" {
-			render.BadRequest(w, "name cannot be blank")
+			render.UnprocessableEntity(w, "name cannot be blank")
 			return
 		}
 		u.Name = *body.Name
 	}
 	if body.Email != nil {
 		if strings.TrimSpace(*body.Email) == "" {
-			render.BadRequest(w, "email cannot be blank")
+			render.UnprocessableEntity(w, "email cannot be blank")
 			return
 		}
 		u.Email = *body.Email

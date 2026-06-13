@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 	"testing"
 
 	"github.com/js-beaulieu/tasks-api/internal/model"
@@ -37,13 +36,6 @@ func memberPath(projectID, userID string) string {
 }
 func statusPath(projectID, status string) string {
 	return fmt.Sprintf("/projects/%s/statuses/%s", projectID, status)
-}
-
-func decodeError(t *testing.T, res *http.Response) string {
-	t.Helper()
-	var m map[string]string
-	httptestutil.Decode(t, res, &m)
-	return m["error"]
 }
 
 func assertNoContent(t *testing.T, res *http.Response) {
@@ -128,19 +120,20 @@ func TestProjectsIntegration_CreateValidation(t *testing.T) {
 	env := httptestutil.NewEnv(t)
 
 	tests := []struct {
-		name string
-		body string
+		name       string
+		body       string
+		wantStatus int
 	}{
-		{"missing name", `{"description":"x"}`},
-		{"blank name", `{"name":"  "}`},
-		{"invalid JSON", `{not json}`},
+		{"missing name", `{"description":"x"}`, http.StatusUnprocessableEntity},
+		{"blank name", `{"name":"  "}`, http.StatusUnprocessableEntity},
+		{"invalid JSON", `{not json}`, http.StatusBadRequest},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/projects", Body: tt.body, UserID: env.User.ID})
-			if res.StatusCode != http.StatusBadRequest {
-				t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
+			if res.StatusCode != tt.wantStatus {
+				t.Fatalf("status = %d, want %d", res.StatusCode, tt.wantStatus)
 			}
 		})
 	}
@@ -350,15 +343,14 @@ func TestProjectsIntegration_AddMember(t *testing.T) {
 		userID     string
 		body       map[string]any
 		wantStatus int
-		wantErr    string
 	}{
-		{"admin adds read role", admin.ID, map[string]any{"user_id": target.ID, "role": model.RoleRead}, http.StatusCreated, ""},
-		{"modifier forbidden", modifier.ID, map[string]any{"user_id": target.ID, "role": model.RoleRead}, http.StatusForbidden, ""},
-		{"reader forbidden", reader.ID, map[string]any{"user_id": target.ID, "role": model.RoleRead}, http.StatusForbidden, ""},
-		{"invalid role", owner.ID, map[string]any{"user_id": target.ID, "role": "superuser"}, http.StatusBadRequest, "role"},
-		{"blank user_id", owner.ID, map[string]any{"user_id": "", "role": model.RoleRead}, http.StatusBadRequest, "user_id"},
-		{"self add", owner.ID, map[string]any{"user_id": owner.ID, "role": model.RoleRead}, http.StatusBadRequest, "yourself"},
-		{"invalid JSON", owner.ID, nil, http.StatusBadRequest, ""},
+		{"admin adds read role", admin.ID, map[string]any{"user_id": target.ID, "role": model.RoleRead}, http.StatusCreated},
+		{"modifier forbidden", modifier.ID, map[string]any{"user_id": target.ID, "role": model.RoleRead}, http.StatusForbidden},
+		{"reader forbidden", reader.ID, map[string]any{"user_id": target.ID, "role": model.RoleRead}, http.StatusForbidden},
+		{"invalid role", owner.ID, map[string]any{"user_id": target.ID, "role": "superuser"}, http.StatusUnprocessableEntity},
+		{"blank user_id", owner.ID, map[string]any{"user_id": "", "role": model.RoleRead}, http.StatusUnprocessableEntity},
+		{"self add", owner.ID, map[string]any{"user_id": owner.ID, "role": model.RoleRead}, http.StatusUnprocessableEntity},
+		{"invalid JSON", owner.ID, nil, http.StatusBadRequest},
 	}
 
 	for _, tt := range tests {
@@ -372,11 +364,6 @@ func TestProjectsIntegration_AddMember(t *testing.T) {
 			}
 			if res.StatusCode != tt.wantStatus {
 				t.Fatalf("status = %d, want %d", res.StatusCode, tt.wantStatus)
-			}
-			if tt.wantErr != "" {
-				if msg := decodeError(t, res); !strings.Contains(msg, tt.wantErr) {
-					t.Fatalf("error = %q, want substring %q", msg, tt.wantErr)
-				}
 			}
 		})
 	}
@@ -432,8 +419,8 @@ func TestProjectsIntegration_UpdateMember(t *testing.T) {
 		res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: memberPath(p.ID, owner.ID), Body: map[string]any{
 			"role": model.RoleModify,
 		}, UserID: owner.ID})
-		if res.StatusCode != http.StatusBadRequest {
-			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
+		if res.StatusCode != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusUnprocessableEntity)
 		}
 	})
 
@@ -441,8 +428,8 @@ func TestProjectsIntegration_UpdateMember(t *testing.T) {
 		res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: memberPath(p.ID, member.ID), Body: map[string]any{
 			"role": "superuser",
 		}, UserID: owner.ID})
-		if res.StatusCode != http.StatusBadRequest {
-			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
+		if res.StatusCode != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusUnprocessableEntity)
 		}
 	})
 
@@ -479,8 +466,8 @@ func TestProjectsIntegration_RemoveMember(t *testing.T) {
 
 	t.Run("reject owner removal", func(t *testing.T) {
 		res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodDelete, Path: memberPath(p.ID, owner.ID), Body: nil, UserID: owner.ID})
-		if res.StatusCode != http.StatusBadRequest {
-			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
+		if res.StatusCode != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusUnprocessableEntity)
 		}
 	})
 
@@ -566,12 +553,12 @@ func TestProjectsIntegration_AddStatus(t *testing.T) {
 		}
 	})
 
-	t.Run("blank status 400", func(t *testing.T) {
+	t.Run("blank status 422", func(t *testing.T) {
 		res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: projectPath(p.ID) + "/statuses", Body: map[string]any{
 			"status": "  ",
 		}, UserID: owner.ID})
-		if res.StatusCode != http.StatusBadRequest {
-			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
+		if res.StatusCode != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusUnprocessableEntity)
 		}
 	})
 

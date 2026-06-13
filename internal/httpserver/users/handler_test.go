@@ -110,7 +110,7 @@ func TestUpdateMe(t *testing.T) {
 		}
 	})
 
-	t.Run("blank name returns 400", func(t *testing.T) {
+	t.Run("blank name returns 422", func(t *testing.T) {
 		u := &model.User{ID: "user-1", Name: "Alice", Email: "alice@example.com"}
 		m := &mock.UserRepo{User: u}
 		handler := authed(m, users.NewRouter(m))
@@ -120,12 +120,12 @@ func TestUpdateMe(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("status = %d, want 400", w.Code)
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Errorf("status = %d, want 422", w.Code)
 		}
 	})
 
-	t.Run("blank email returns 400", func(t *testing.T) {
+	t.Run("blank email returns 422", func(t *testing.T) {
 		u := &model.User{ID: "user-1", Name: "Alice", Email: "alice@example.com"}
 		m := &mock.UserRepo{User: u}
 		handler := authed(m, users.NewRouter(m))
@@ -135,8 +135,8 @@ func TestUpdateMe(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("status = %d, want 400", w.Code)
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Errorf("status = %d, want 422", w.Code)
 		}
 	})
 

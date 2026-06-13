@@ -163,12 +163,12 @@ func TestProjectTasksIntegration_Create(t *testing.T) {
 		}
 	})
 
-	t.Run("blank name 400", func(t *testing.T) {
+	t.Run("blank name 422", func(t *testing.T) {
 		res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/projects/" + p.ID + "/tasks", Body: map[string]any{
 			"name": "   ",
 		}, UserID: owner.ID})
-		if res.StatusCode != http.StatusBadRequest {
-			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
+		if res.StatusCode != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusUnprocessableEntity)
 		}
 	})
 
