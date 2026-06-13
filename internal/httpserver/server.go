@@ -3,7 +3,8 @@ package httpserver
 import (
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
 	"github.com/js-beaulieu/tasks-api/internal/config"
 	"github.com/js-beaulieu/tasks-api/internal/httpserver/middleware"
@@ -16,19 +17,30 @@ import (
 )
 
 func New(store *postgres.Store, cfg config.Config) http.Handler {
-	r := chi.NewRouter()
+	_ = cfg
 
-	r.Get("/health", healthHandler)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", healthHandler)
 
-	r.Group(func(r chi.Router) {
-		r.Use(middleware.AuthMiddleware(store.Users))
-		r.Mount("/users", users.NewRouter(store.Users))
-		r.Mount("/projects", projects.NewRouter(store.Projects, store.Tasks))
-		r.Mount("/tasks", taskhandler.NewRouter(store.Projects, store.Tasks, store.Tags))
-		r.Mount("/tags", taghandler.NewRouter(store.Tags))
+	apiConfig := huma.DefaultConfig("tasks-api", "1.0.0")
+	apiConfig.OpenAPIPath = "/openapi"
+	apiConfig.DocsPath = "/docs"
+	api := humago.New(mux, apiConfig)
+
+	protected := huma.NewGroup(api)
+	protected.UseMiddleware(func(ctx huma.Context, next func(huma.Context)) {
+		req, w := humago.Unwrap(ctx)
+		middleware.AuthMiddleware(store.Users)(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			next(huma.WithContext(ctx, r.Context()))
+		})).ServeHTTP(w, req)
 	})
 
-	return r
+	users.RegisterRoutes(protected, store.Users, "/users")
+	projects.RegisterRoutes(protected, store.Projects, store.Tasks, "/projects")
+	taskhandler.RegisterRoutes(protected, store.Projects, store.Tasks, store.Tags, "/tasks")
+	taghandler.RegisterRoutes(protected, store.Tags, "/tags")
+
+	return mux
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {

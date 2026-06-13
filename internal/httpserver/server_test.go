@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/js-beaulieu/tasks-api/internal/config"
@@ -21,6 +22,18 @@ func TestNew(t *testing.T) {
 		h.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
 			t.Errorf("status = %d, want 200", w.Code)
+		}
+	})
+
+	t.Run("openapi is public", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/openapi.json", nil)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		if !strings.Contains(w.Body.String(), `"openapi"`) {
+			t.Fatalf("body = %q, want OpenAPI document", w.Body.String())
 		}
 	})
 }

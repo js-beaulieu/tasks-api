@@ -7,27 +7,13 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 
 	"github.com/js-beaulieu/tasks-api/internal/httpserver/middleware"
-	"github.com/js-beaulieu/tasks-api/internal/httpserver/render"
 	"github.com/js-beaulieu/tasks-api/internal/model"
 	"github.com/js-beaulieu/tasks-api/internal/repo"
 )
-
-type taskCtxKey struct{}
-type taskRoleCtxKey struct{}
-
-func taskFromCtx(ctx context.Context) *model.Task {
-	t, _ := ctx.Value(taskCtxKey{}).(*model.Task)
-	return t
-}
-
-func taskRoleFromCtx(ctx context.Context) string {
-	r, _ := ctx.Value(taskRoleCtxKey{}).(string)
-	return r
-}
 
 var roleRank = map[string]int{
 	model.RoleRead:   1,
@@ -39,69 +25,56 @@ func requireRole(min, actual string) bool {
 	return roleRank[actual] >= roleRank[min]
 }
 
-// Handler holds all repository dependencies for task operations.
 type Handler struct {
 	projects repo.ProjectRepo
 	tasks    repo.TaskRepo
 	tags     repo.TagRepo
 }
 
-// NewRouter wires all /tasks/{taskID} routes and returns the handler tree.
-func NewRouter(projects repo.ProjectRepo, tasks repo.TaskRepo, tags repo.TagRepo) http.Handler {
+func RegisterRoutes(api huma.API, projects repo.ProjectRepo, tasks repo.TaskRepo, tags repo.TagRepo, prefix string) {
 	h := &Handler{projects: projects, tasks: tasks, tags: tags}
-	r := chi.NewRouter()
+	group := huma.NewGroup(api, prefix)
 
-	r.Route("/{taskID}", func(r chi.Router) {
-		r.Use(h.taskCtx)
-		r.Get("/", h.get)
-		r.Patch("/", h.update)
-		r.Delete("/", h.delete)
-		r.Post("/complete", h.completeTask)
-		r.Get("/tasks", h.listSubtasks)
-		r.Post("/tasks", h.createSubtask)
-		r.Get("/tags", h.listTags)
-		r.Post("/tags", h.addTag)
-		r.Delete("/tags/{tag}", h.deleteTag)
-	})
-
-	return r
+	huma.Get(group, "/{taskID}", h.get)
+	huma.Patch(group, "/{taskID}", h.update)
+	huma.Delete(group, "/{taskID}", h.delete)
+	huma.Post(group, "/{taskID}/complete", h.completeTask)
+	huma.Get(group, "/{taskID}/tasks", h.listSubtasks)
+	huma.Post(group, "/{taskID}/tasks", h.createSubtask)
+	huma.Get(group, "/{taskID}/tags", h.listTags)
+	huma.Post(group, "/{taskID}/tags", h.addTag)
+	huma.Delete(group, "/{taskID}/tags/{tag}", h.deleteTag)
 }
 
-// taskCtx loads the task and the caller's role into the request context.
-func (h *Handler) taskCtx(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := chi.URLParam(r, "taskID")
-		t, err := h.tasks.Get(r.Context(), id)
-		if err != nil {
-			if errors.Is(err, repo.ErrNotFound) {
-				render.NotFound(w)
-			} else {
-				render.Error(w, http.StatusInternalServerError, "internal error")
-			}
-			return
-		}
-
-		user := middleware.UserFromCtx(r.Context())
-		role, err := h.projects.GetMemberRole(r.Context(), t.ProjectID, user.ID)
-		if err != nil {
-			render.Forbidden(w)
-			return
-		}
-
-		ctx := context.WithValue(r.Context(), taskCtxKey{}, t)
-		ctx = context.WithValue(ctx, taskRoleCtxKey{}, role)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+func (h *Handler) loadTask(ctx context.Context, taskID string) (*model.Task, string, error) {
+	t, err := h.tasks.Get(ctx, taskID)
+	if err != nil {
+		return nil, "", err
+	}
+	user := middleware.UserFromCtx(ctx)
+	role, err := h.projects.GetMemberRole(ctx, t.ProjectID, user.ID)
+	if err != nil {
+		return nil, "", repo.ErrNoAccess
+	}
+	return t, role, nil
 }
 
-// ── Task CRUD ──────────────────────────────────────────────────────────────
-
-func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
-	render.JSON(w, http.StatusOK, taskFromCtx(r.Context()))
+type taskInput struct {
+	TaskID string `path:"taskID"`
 }
 
-// nullable distinguishes "field omitted" (Set=false) from "field present but null"
-// (Set=true, Value=nil) in JSON payloads.
+type taskOutput struct {
+	Body *model.Task
+}
+
+func (h *Handler) get(ctx context.Context, input *taskInput) (*taskOutput, error) {
+	t, _, err := h.loadTask(ctx, input.TaskID)
+	if err != nil {
+		return nil, taskError(err)
+	}
+	return &taskOutput{Body: t}, nil
+}
+
 type nullable[T any] struct {
 	Value *T
 	Set   bool
@@ -121,91 +94,89 @@ func (n *nullable[T]) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-type updateTaskReq struct {
-	Name        *string          `json:"name"`
-	Description *string          `json:"description"`
-	Status      *string          `json:"status"`
-	DueDate     *string          `json:"due_date"`
-	AssigneeID  *string          `json:"assignee_id"`
-	Position    *int             `json:"position"`
-	ParentID    nullable[string] `json:"parent_id"`
-	ProjectID   *string          `json:"project_id"`
+type updateTaskBody struct {
+	Name        *string          `json:"name,omitempty"`
+	Description *string          `json:"description,omitempty"`
+	Status      *string          `json:"status,omitempty"`
+	DueDate     *string          `json:"due_date,omitempty"`
+	AssigneeID  *string          `json:"assignee_id,omitempty"`
+	Position    *int             `json:"position,omitempty"`
+	ParentID    nullable[string] `json:"parent_id,omitempty"`
+	ProjectID   *string          `json:"project_id,omitempty"`
 }
 
-func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
-	if !requireRole(model.RoleModify, taskRoleFromCtx(r.Context())) {
-		render.Forbidden(w)
-		return
-	}
-	var body updateTaskReq
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		render.BadRequest(w, "invalid JSON")
-		return
-	}
+type updateTaskInput struct {
+	TaskID string `path:"taskID"`
+	Body   updateTaskBody
+}
 
-	t := taskFromCtx(r.Context())
-
-	// Cross-project move: caller must have modify on the target project too.
-	if body.ProjectID != nil && *body.ProjectID != t.ProjectID {
-		user := middleware.UserFromCtx(r.Context())
-		targetRole, err := h.projects.GetMemberRole(r.Context(), *body.ProjectID, user.ID)
+func (h *Handler) update(ctx context.Context, input *updateTaskInput) (*taskOutput, error) {
+	t, role, err := h.loadTask(ctx, input.TaskID)
+	if err != nil {
+		return nil, taskError(err)
+	}
+	if !requireRole(model.RoleModify, role) {
+		return nil, huma.Error403Forbidden("forbidden")
+	}
+	if input.Body.ProjectID != nil && *input.Body.ProjectID != t.ProjectID {
+		user := middleware.UserFromCtx(ctx)
+		targetRole, err := h.projects.GetMemberRole(ctx, *input.Body.ProjectID, user.ID)
 		if err != nil || !requireRole(model.RoleModify, targetRole) {
-			render.Forbidden(w)
-			return
+			return nil, huma.Error403Forbidden("forbidden")
 		}
-		t.ProjectID = *body.ProjectID
+		t.ProjectID = *input.Body.ProjectID
 	}
-
-	if body.Name != nil {
-		t.Name = *body.Name
+	if input.Body.Name != nil {
+		t.Name = *input.Body.Name
 	}
-	if body.Description != nil {
-		t.Description = body.Description
+	if input.Body.Description != nil {
+		t.Description = input.Body.Description
 	}
-	if body.Status != nil {
-		t.Status = *body.Status
+	if input.Body.Status != nil {
+		t.Status = *input.Body.Status
 	}
-	if body.DueDate != nil {
-		t.DueDate = body.DueDate
+	if input.Body.DueDate != nil {
+		t.DueDate = input.Body.DueDate
 	}
-	if body.AssigneeID != nil {
-		t.AssigneeID = body.AssigneeID
+	if input.Body.AssigneeID != nil {
+		t.AssigneeID = input.Body.AssigneeID
 	}
-	if body.Position != nil {
-		t.Position = *body.Position
+	if input.Body.Position != nil {
+		t.Position = *input.Body.Position
 	}
-	if body.ParentID.Set {
-		t.ParentID = body.ParentID.Value
+	if input.Body.ParentID.Set {
+		t.ParentID = input.Body.ParentID.Value
 	}
-
-	if err := h.tasks.Update(r.Context(), t); err != nil {
+	if err := h.tasks.Update(ctx, t); err != nil {
 		if errors.Is(err, repo.ErrConflict) {
-			render.Error(w, http.StatusConflict, "invalid status")
-			return
+			return nil, huma.Error409Conflict("invalid status")
 		}
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
+		return nil, huma.Error500InternalServerError("internal error")
 	}
-	render.JSON(w, http.StatusOK, t)
+	return &taskOutput{Body: t}, nil
 }
 
-func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
-	if !requireRole(model.RoleModify, taskRoleFromCtx(r.Context())) {
-		render.Forbidden(w)
-		return
+func (h *Handler) delete(ctx context.Context, input *taskInput) (*struct{}, error) {
+	t, role, err := h.loadTask(ctx, input.TaskID)
+	if err != nil {
+		return nil, taskError(err)
 	}
-	t := taskFromCtx(r.Context())
-	if err := h.tasks.Delete(r.Context(), t.ID); err != nil {
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
+	if !requireRole(model.RoleModify, role) {
+		return nil, huma.Error403Forbidden("forbidden")
 	}
-	render.NoContent(w)
+	if err := h.tasks.Delete(ctx, t.ID); err != nil {
+		return nil, huma.Error500InternalServerError("internal error")
+	}
+	return nil, nil
 }
 
-// ── Complete ───────────────────────────────────────────────────────────────
+type completeTaskBody struct {
+	DoneStatus string `json:"done_status" minLength:"1"`
+}
 
-type completeTaskReq struct {
-	DoneStatus string `json:"done_status"`
+type completeTaskInput struct {
+	TaskID string `path:"taskID"`
+	Body   completeTaskBody
 }
 
 type completeTaskResp struct {
@@ -213,144 +184,175 @@ type completeTaskResp struct {
 	Next      *model.Task `json:"next"`
 }
 
-func (h *Handler) completeTask(w http.ResponseWriter, r *http.Request) {
-	if !requireRole(model.RoleModify, taskRoleFromCtx(r.Context())) {
-		render.Forbidden(w)
-		return
+type completeTaskOutput struct {
+	Body completeTaskResp
+}
+
+func (h *Handler) completeTask(ctx context.Context, input *completeTaskInput) (*completeTaskOutput, error) {
+	t, role, err := h.loadTask(ctx, input.TaskID)
+	if err != nil {
+		return nil, taskError(err)
 	}
-	var body completeTaskReq
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		render.BadRequest(w, "invalid JSON")
-		return
+	if !requireRole(model.RoleModify, role) {
+		return nil, huma.Error403Forbidden("forbidden")
 	}
-	if strings.TrimSpace(body.DoneStatus) == "" {
-		render.UnprocessableEntity(w, "done_status is required")
-		return
+	if strings.TrimSpace(input.Body.DoneStatus) == "" {
+		return nil, huma.Error422UnprocessableEntity("done_status is required")
 	}
-	t := taskFromCtx(r.Context())
-	completed, next, err := h.tasks.CompleteTask(r.Context(), t.ID, body.DoneStatus)
+	completed, next, err := h.tasks.CompleteTask(ctx, t.ID, input.Body.DoneStatus)
 	if err != nil {
 		if errors.Is(err, repo.ErrConflict) {
-			render.Error(w, http.StatusConflict, "invalid done_status or missing due_date for recurring task")
-			return
+			return nil, huma.Error409Conflict("invalid done_status or missing due_date for recurring task")
 		}
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
+		return nil, huma.Error500InternalServerError("internal error")
 	}
-	render.JSON(w, http.StatusOK, completeTaskResp{Completed: completed, Next: next})
+	return &completeTaskOutput{Body: completeTaskResp{Completed: completed, Next: next}}, nil
 }
 
-// ── Subtasks ───────────────────────────────────────────────────────────────
+type subtaskListOutput struct {
+	Body []*model.Task
+}
 
-func (h *Handler) listSubtasks(w http.ResponseWriter, r *http.Request) {
-	t := taskFromCtx(r.Context())
-	parentID := t.ID
-	list, err := h.tasks.ListChildren(r.Context(), t.ProjectID, &parentID, repo.TaskFilter{})
+func (h *Handler) listSubtasks(ctx context.Context, input *taskInput) (*subtaskListOutput, error) {
+	t, _, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
+		return nil, taskError(err)
 	}
-	render.JSON(w, http.StatusOK, list)
+	parentID := t.ID
+	list, err := h.tasks.ListChildren(ctx, t.ProjectID, &parentID, repo.TaskFilter{})
+	if err != nil {
+		return nil, huma.Error500InternalServerError("internal error")
+	}
+	return &subtaskListOutput{Body: list}, nil
 }
 
-type createTaskReq struct {
-	Name        string  `json:"name"`
-	Description *string `json:"description"`
-	Status      *string `json:"status"`
-	DueDate     *string `json:"due_date"`
-	AssigneeID  *string `json:"assignee_id"`
+type createSubtaskBody struct {
+	Name        string  `json:"name" minLength:"1"`
+	Description *string `json:"description,omitempty"`
+	Status      *string `json:"status,omitempty"`
+	DueDate     *string `json:"due_date,omitempty"`
+	AssigneeID  *string `json:"assignee_id,omitempty"`
 }
 
-func (h *Handler) createSubtask(w http.ResponseWriter, r *http.Request) {
-	if !requireRole(model.RoleModify, taskRoleFromCtx(r.Context())) {
-		render.Forbidden(w)
-		return
+type createSubtaskInput struct {
+	TaskID string `path:"taskID"`
+	Body   createSubtaskBody
+}
+
+type createdTaskOutput struct {
+	Status int `status:"201"`
+	Body   *model.Task
+}
+
+func (h *Handler) createSubtask(ctx context.Context, input *createSubtaskInput) (*createdTaskOutput, error) {
+	parent, role, err := h.loadTask(ctx, input.TaskID)
+	if err != nil {
+		return nil, taskError(err)
 	}
-	var body createTaskReq
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		render.BadRequest(w, "invalid JSON")
-		return
+	if !requireRole(model.RoleModify, role) {
+		return nil, huma.Error403Forbidden("forbidden")
 	}
-	if strings.TrimSpace(body.Name) == "" {
-		render.UnprocessableEntity(w, "name is required")
-		return
+	if strings.TrimSpace(input.Body.Name) == "" {
+		return nil, huma.Error422UnprocessableEntity("name is required")
 	}
-	parent := taskFromCtx(r.Context())
-	user := middleware.UserFromCtx(r.Context())
+	user := middleware.UserFromCtx(ctx)
 	parentID := parent.ID
 	status := "todo"
-	if body.Status != nil {
-		status = *body.Status
+	if input.Body.Status != nil {
+		status = *input.Body.Status
 	}
 	t := &model.Task{
 		ID:          uuid.New().String(),
 		ProjectID:   parent.ProjectID,
 		ParentID:    &parentID,
-		Name:        body.Name,
-		Description: body.Description,
+		Name:        input.Body.Name,
+		Description: input.Body.Description,
 		Status:      status,
-		DueDate:     body.DueDate,
+		DueDate:     input.Body.DueDate,
 		OwnerID:     user.ID,
-		AssigneeID:  body.AssigneeID,
+		AssigneeID:  input.Body.AssigneeID,
 	}
-	if err := h.tasks.Create(r.Context(), t); err != nil {
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
+	if err := h.tasks.Create(ctx, t); err != nil {
+		return nil, huma.Error500InternalServerError("internal error")
 	}
-	render.JSON(w, http.StatusCreated, t)
+	return &createdTaskOutput{Status: http.StatusCreated, Body: t}, nil
 }
 
-// ── Tags ───────────────────────────────────────────────────────────────────
+type tagListOutput struct {
+	Body []string
+}
 
-func (h *Handler) listTags(w http.ResponseWriter, r *http.Request) {
-	t := taskFromCtx(r.Context())
-	list, err := h.tags.ListForTask(r.Context(), t.ID)
+func (h *Handler) listTags(ctx context.Context, input *taskInput) (*tagListOutput, error) {
+	t, _, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
+		return nil, taskError(err)
+	}
+	list, err := h.tags.ListForTask(ctx, t.ID)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	if list == nil {
 		list = []string{}
 	}
-	render.JSON(w, http.StatusOK, list)
+	return &tagListOutput{Body: list}, nil
 }
 
-type addTagReq struct {
-	Tag string `json:"tag"`
+type addTagBody struct {
+	Tag string `json:"tag" minLength:"1"`
 }
 
-func (h *Handler) addTag(w http.ResponseWriter, r *http.Request) {
-	if !requireRole(model.RoleModify, taskRoleFromCtx(r.Context())) {
-		render.Forbidden(w)
-		return
-	}
-	var body addTagReq
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		render.BadRequest(w, "invalid JSON")
-		return
-	}
-	if strings.TrimSpace(body.Tag) == "" {
-		render.UnprocessableEntity(w, "tag is required")
-		return
-	}
-	t := taskFromCtx(r.Context())
-	if err := h.tags.Add(r.Context(), t.ID, body.Tag); err != nil {
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	render.JSON(w, http.StatusCreated, map[string]string{"task_id": t.ID, "tag": body.Tag})
+type addTagInput struct {
+	TaskID string `path:"taskID"`
+	Body   addTagBody
 }
 
-func (h *Handler) deleteTag(w http.ResponseWriter, r *http.Request) {
-	if !requireRole(model.RoleModify, taskRoleFromCtx(r.Context())) {
-		render.Forbidden(w)
-		return
+type tagOutput struct {
+	Status int `status:"201"`
+	Body   map[string]string
+}
+
+func (h *Handler) addTag(ctx context.Context, input *addTagInput) (*tagOutput, error) {
+	t, role, err := h.loadTask(ctx, input.TaskID)
+	if err != nil {
+		return nil, taskError(err)
 	}
-	t := taskFromCtx(r.Context())
-	tag := chi.URLParam(r, "tag")
-	if err := h.tags.Delete(r.Context(), t.ID, tag); err != nil {
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
+	if !requireRole(model.RoleModify, role) {
+		return nil, huma.Error403Forbidden("forbidden")
 	}
-	render.NoContent(w)
+	if strings.TrimSpace(input.Body.Tag) == "" {
+		return nil, huma.Error422UnprocessableEntity("tag is required")
+	}
+	if err := h.tags.Add(ctx, t.ID, input.Body.Tag); err != nil {
+		return nil, huma.Error500InternalServerError("internal error")
+	}
+	return &tagOutput{Status: http.StatusCreated, Body: map[string]string{"task_id": t.ID, "tag": input.Body.Tag}}, nil
+}
+
+type deleteTagInput struct {
+	TaskID string `path:"taskID"`
+	Tag    string `path:"tag"`
+}
+
+func (h *Handler) deleteTag(ctx context.Context, input *deleteTagInput) (*struct{}, error) {
+	t, role, err := h.loadTask(ctx, input.TaskID)
+	if err != nil {
+		return nil, taskError(err)
+	}
+	if !requireRole(model.RoleModify, role) {
+		return nil, huma.Error403Forbidden("forbidden")
+	}
+	if err := h.tags.Delete(ctx, t.ID, input.Tag); err != nil {
+		return nil, huma.Error500InternalServerError("internal error")
+	}
+	return nil, nil
+}
+
+func taskError(err error) error {
+	if errors.Is(err, repo.ErrNotFound) {
+		return huma.Error404NotFound("not found")
+	}
+	if errors.Is(err, repo.ErrNoAccess) {
+		return huma.Error403Forbidden("forbidden")
+	}
+	return huma.Error500InternalServerError("internal error")
 }
