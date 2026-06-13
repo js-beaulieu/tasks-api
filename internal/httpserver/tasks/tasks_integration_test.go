@@ -6,8 +6,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
-	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -17,21 +15,6 @@ import (
 )
 
 // ── helpers ──────────────────────────────────────────────────────────────────
-
-// rawBody sends a request with a raw string body (no JSON encoding).
-func rawBody(t *testing.T, handler http.Handler, method, path, body string, userID string) *httptest.ResponseRecorder {
-	t.Helper()
-	req := httptest.NewRequest(method, path, strings.NewReader(body))
-	if body != "" {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	if userID != "" {
-		req.Header.Set("X-User-ID", userID)
-	}
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-	return w
-}
 
 var userCounter int64
 
@@ -62,8 +45,10 @@ func TestTasksIntegration_Get_AuthorizedByOwner(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/tasks/"+task.ID, nil, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/tasks/" + task.ID, Body: nil, UserID: env.User.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 
 	var got model.Task
 	httptestutil.Decode(t, res, &got)
@@ -78,8 +63,10 @@ func TestTasksIntegration_Get_ReadMemberCanAccess(t *testing.T) {
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 	reader := createUserWithRole(t, env, project.ID, model.RoleRead)
 
-	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/tasks/"+task.ID, nil, reader.ID)
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/tasks/" + task.ID, Body: nil, UserID: reader.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 }
 
 func TestTasksIntegration_Get_NoAccessForbidden(t *testing.T) {
@@ -88,15 +75,19 @@ func TestTasksIntegration_Get_NoAccessForbidden(t *testing.T) {
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 	outsider := seed.User(t, env.Store, seed.UserInput{Name: "outsider"})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/tasks/"+task.ID, nil, outsider.ID)
-	httptestutil.AssertStatus(t, res, http.StatusForbidden)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/tasks/" + task.ID, Body: nil, UserID: outsider.ID})
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusForbidden)
+	}
 }
 
 func TestTasksIntegration_Get_MissingTaskNotFound(t *testing.T) {
 	env := httptestutil.NewEnv(t)
 
-	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/tasks/nonexistent-id", nil, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusNotFound)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/tasks/nonexistent-id", Body: nil, UserID: env.User.ID})
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusNotFound)
+	}
 }
 
 // ── PATCH /tasks/{taskID} ───────────────────────────────────────────────────
@@ -106,11 +97,13 @@ func TestTasksIntegration_Patch_OwnerUpdatesFields(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID, Name: "original"})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPatch, "/tasks/"+task.ID, map[string]any{
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: "/tasks/" + task.ID, Body: map[string]any{
 		"name":   "updated",
 		"status": "in_progress",
-	}, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 
 	var got model.Task
 	httptestutil.Decode(t, res, &got)
@@ -128,10 +121,12 @@ func TestTasksIntegration_Patch_ModifyMemberUpdatesFields(t *testing.T) {
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 	modifier := createUserWithRole(t, env, project.ID, model.RoleModify)
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPatch, "/tasks/"+task.ID, map[string]any{
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: "/tasks/" + task.ID, Body: map[string]any{
 		"name": "modified by modify",
-	}, modifier.ID)
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	}, UserID: modifier.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 }
 
 func TestTasksIntegration_Patch_ReadForbidden(t *testing.T) {
@@ -140,10 +135,12 @@ func TestTasksIntegration_Patch_ReadForbidden(t *testing.T) {
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 	reader := createUserWithRole(t, env, project.ID, model.RoleRead)
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPatch, "/tasks/"+task.ID, map[string]any{
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: "/tasks/" + task.ID, Body: map[string]any{
 		"name": "try update",
-	}, reader.ID)
-	httptestutil.AssertStatus(t, res, http.StatusForbidden)
+	}, UserID: reader.ID})
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusForbidden)
+	}
 }
 
 func TestTasksIntegration_Patch_InvalidJSON(t *testing.T) {
@@ -151,8 +148,10 @@ func TestTasksIntegration_Patch_InvalidJSON(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
-	res := rawBody(t, env.Handler, http.MethodPatch, "/tasks/"+task.ID, `{invalid`, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusBadRequest)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: "/tasks/" + task.ID, Body: `{invalid`, UserID: env.User.ID})
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
+	}
 }
 
 func TestTasksIntegration_Patch_InvalidStatus409(t *testing.T) {
@@ -160,10 +159,12 @@ func TestTasksIntegration_Patch_InvalidStatus409(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPatch, "/tasks/"+task.ID, map[string]any{
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: "/tasks/" + task.ID, Body: map[string]any{
 		"status": "nonexistent_status",
-	}, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusConflict)
+	}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusConflict)
+	}
 }
 
 func TestTasksIntegration_Patch_ParentIDNullDetaches(t *testing.T) {
@@ -172,10 +173,12 @@ func TestTasksIntegration_Patch_ParentIDNullDetaches(t *testing.T) {
 	parent := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 	child := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID, ParentID: &parent.ID})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPatch, "/tasks/"+child.ID, map[string]any{
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: "/tasks/" + child.ID, Body: map[string]any{
 		"parent_id": nil,
-	}, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 
 	var got model.Task
 	httptestutil.Decode(t, res, &got)
@@ -190,10 +193,12 @@ func TestTasksIntegration_Patch_CrossProjectMoveWithModifyOnBoth(t *testing.T) {
 	projectB := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID, Name: "B"})
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: projectA.ID, OwnerID: env.User.ID})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPatch, "/tasks/"+task.ID, map[string]any{
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: "/tasks/" + task.ID, Body: map[string]any{
 		"project_id": projectB.ID,
-	}, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 
 	var got model.Task
 	httptestutil.Decode(t, res, &got)
@@ -210,10 +215,12 @@ func TestTasksIntegration_Patch_CrossProjectMoveForbiddenWithoutTargetModify(t *
 	_ = createUserWithRole(t, env, projectB.ID, model.RoleRead) // nolint:staticcheck // reader on target project
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: projectA.ID, OwnerID: modifier.ID})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPatch, "/tasks/"+task.ID, map[string]any{
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: "/tasks/" + task.ID, Body: map[string]any{
 		"project_id": projectB.ID,
-	}, modifier.ID)
-	httptestutil.AssertStatus(t, res, http.StatusForbidden)
+	}, UserID: modifier.ID})
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusForbidden)
+	}
 }
 
 func TestTasksIntegration_Patch_UpdateReflectsInDB(t *testing.T) {
@@ -221,9 +228,9 @@ func TestTasksIntegration_Patch_UpdateReflectsInDB(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID, Name: "before"})
 
-	httptestutil.Request(t, env.Handler, http.MethodPatch, "/tasks/"+task.ID, map[string]any{
+	httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: "/tasks/" + task.ID, Body: map[string]any{
 		"name": "after",
-	}, env.User.ID)
+	}, UserID: env.User.ID})
 
 	got, err := env.Store.Tasks.Get(context.Background(), task.ID)
 	if err != nil {
@@ -241,8 +248,10 @@ func TestTasksIntegration_Delete_OwnerDeletes(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodDelete, "/tasks/"+task.ID, nil, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusNoContent)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodDelete, Path: "/tasks/" + task.ID, Body: nil, UserID: env.User.ID})
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusNoContent)
+	}
 }
 
 func TestTasksIntegration_Delete_ModifyMemberDeletes(t *testing.T) {
@@ -251,8 +260,10 @@ func TestTasksIntegration_Delete_ModifyMemberDeletes(t *testing.T) {
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 	modifier := createUserWithRole(t, env, project.ID, model.RoleModify)
 
-	res := httptestutil.Request(t, env.Handler, http.MethodDelete, "/tasks/"+task.ID, nil, modifier.ID)
-	httptestutil.AssertStatus(t, res, http.StatusNoContent)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodDelete, Path: "/tasks/" + task.ID, Body: nil, UserID: modifier.ID})
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusNoContent)
+	}
 }
 
 func TestTasksIntegration_Delete_ReadForbidden(t *testing.T) {
@@ -261,8 +272,10 @@ func TestTasksIntegration_Delete_ReadForbidden(t *testing.T) {
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 	reader := createUserWithRole(t, env, project.ID, model.RoleRead)
 
-	res := httptestutil.Request(t, env.Handler, http.MethodDelete, "/tasks/"+task.ID, nil, reader.ID)
-	httptestutil.AssertStatus(t, res, http.StatusForbidden)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodDelete, Path: "/tasks/" + task.ID, Body: nil, UserID: reader.ID})
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusForbidden)
+	}
 }
 
 func TestTasksIntegration_Delete_NoAccessForbidden(t *testing.T) {
@@ -271,8 +284,10 @@ func TestTasksIntegration_Delete_NoAccessForbidden(t *testing.T) {
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 	outsider := seed.User(t, env.Store, seed.UserInput{Name: "outsider"})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodDelete, "/tasks/"+task.ID, nil, outsider.ID)
-	httptestutil.AssertStatus(t, res, http.StatusForbidden)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodDelete, Path: "/tasks/" + task.ID, Body: nil, UserID: outsider.ID})
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusForbidden)
+	}
 }
 
 func TestTasksIntegration_Delete_RemovedFromDB(t *testing.T) {
@@ -280,7 +295,7 @@ func TestTasksIntegration_Delete_RemovedFromDB(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
-	httptestutil.Request(t, env.Handler, http.MethodDelete, "/tasks/"+task.ID, nil, env.User.ID)
+	httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodDelete, Path: "/tasks/" + task.ID, Body: nil, UserID: env.User.ID})
 
 	_, err := env.Store.Tasks.Get(context.Background(), task.ID)
 	if err == nil {
@@ -295,10 +310,12 @@ func TestTasksIntegration_Complete_NonRecurring(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+task.ID+"/complete", map[string]any{
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + task.ID + "/complete", Body: map[string]any{
 		"done_status": "done",
-	}, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 
 	var body struct {
 		Completed *model.Task `json:"completed"`
@@ -335,8 +352,10 @@ func TestTasksIntegration_Complete_Recurring(t *testing.T) {
 		t.Fatalf("seed recurring tag: %v", err)
 	}
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+recurring.ID+"/complete", map[string]any{"done_status": "done"}, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + recurring.ID + "/complete", Body: map[string]any{"done_status": "done"}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 
 	var body struct {
 		Completed *model.Task `json:"completed"`
@@ -371,10 +390,12 @@ func TestTasksIntegration_Complete_ReadForbidden(t *testing.T) {
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 	reader := createUserWithRole(t, env, project.ID, model.RoleRead)
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+task.ID+"/complete", map[string]any{
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + task.ID + "/complete", Body: map[string]any{
 		"done_status": "done",
-	}, reader.ID)
-	httptestutil.AssertStatus(t, res, http.StatusForbidden)
+	}, UserID: reader.ID})
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusForbidden)
+	}
 }
 
 func TestTasksIntegration_Complete_BlankDoneStatus(t *testing.T) {
@@ -382,10 +403,12 @@ func TestTasksIntegration_Complete_BlankDoneStatus(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+task.ID+"/complete", map[string]any{
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + task.ID + "/complete", Body: map[string]any{
 		"done_status": "",
-	}, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusBadRequest)
+	}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
+	}
 }
 
 func TestTasksIntegration_Complete_InvalidDoneStatus(t *testing.T) {
@@ -393,10 +416,12 @@ func TestTasksIntegration_Complete_InvalidDoneStatus(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+task.ID+"/complete", map[string]any{
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + task.ID + "/complete", Body: map[string]any{
 		"done_status": "nonexistent",
-	}, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusConflict)
+	}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusConflict)
+	}
 }
 
 func TestTasksIntegration_Complete_InvalidJSON(t *testing.T) {
@@ -404,8 +429,10 @@ func TestTasksIntegration_Complete_InvalidJSON(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
-	res := rawBody(t, env.Handler, http.MethodPost, "/tasks/"+task.ID+"/complete", `{invalid`, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusBadRequest)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + task.ID + "/complete", Body: `{invalid`, UserID: env.User.ID})
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
+	}
 }
 
 // ── GET /tasks/{taskID}/tasks ────────────────────────────────────────────────
@@ -418,8 +445,10 @@ func TestTasksIntegration_ListSubtasks_DirectChildrenOnly(t *testing.T) {
 	_ = seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID, ParentID: &child.ID}) // grandchild
 	_ = seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})                      // sibling of parent
 
-	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/tasks/"+parent.ID+"/tasks", nil, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/tasks/" + parent.ID + "/tasks", Body: nil, UserID: env.User.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 
 	var tasks []*model.Task
 	httptestutil.Decode(t, res, &tasks)
@@ -435,8 +464,10 @@ func TestTasksIntegration_ListSubtasks_ReadCanList(t *testing.T) {
 	_ = seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID, ParentID: &parent.ID})
 	reader := createUserWithRole(t, env, project.ID, model.RoleRead)
 
-	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/tasks/"+parent.ID+"/tasks", nil, reader.ID)
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/tasks/" + parent.ID + "/tasks", Body: nil, UserID: reader.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 }
 
 func TestTasksIntegration_ListSubtasks_NoAccessForbidden(t *testing.T) {
@@ -445,8 +476,10 @@ func TestTasksIntegration_ListSubtasks_NoAccessForbidden(t *testing.T) {
 	parent := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 	outsider := seed.User(t, env.Store, seed.UserInput{Name: "outsider"})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/tasks/"+parent.ID+"/tasks", nil, outsider.ID)
-	httptestutil.AssertStatus(t, res, http.StatusForbidden)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/tasks/" + parent.ID + "/tasks", Body: nil, UserID: outsider.ID})
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusForbidden)
+	}
 }
 
 // ── POST /tasks/{taskID}/tasks ──────────────────────────────────────────────
@@ -456,10 +489,12 @@ func TestTasksIntegration_CreateSubtask_OwnerCreates(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	parent := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+parent.ID+"/tasks", map[string]any{
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + parent.ID + "/tasks", Body: map[string]any{
 		"name": "Subtask",
-	}, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusCreated)
+	}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusCreated)
+	}
 
 	var sub model.Task
 	httptestutil.Decode(t, res, &sub)
@@ -483,10 +518,12 @@ func TestTasksIntegration_CreateSubtask_ModifyMemberCreates(t *testing.T) {
 	parent := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 	modifier := createUserWithRole(t, env, project.ID, model.RoleModify)
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+parent.ID+"/tasks", map[string]any{
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + parent.ID + "/tasks", Body: map[string]any{
 		"name": "Sub by modifier",
-	}, modifier.ID)
-	httptestutil.AssertStatus(t, res, http.StatusCreated)
+	}, UserID: modifier.ID})
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusCreated)
+	}
 }
 
 func TestTasksIntegration_CreateSubtask_ReadForbidden(t *testing.T) {
@@ -495,10 +532,12 @@ func TestTasksIntegration_CreateSubtask_ReadForbidden(t *testing.T) {
 	parent := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 	reader := createUserWithRole(t, env, project.ID, model.RoleRead)
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+parent.ID+"/tasks", map[string]any{
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + parent.ID + "/tasks", Body: map[string]any{
 		"name": "forbidden subtask",
-	}, reader.ID)
-	httptestutil.AssertStatus(t, res, http.StatusForbidden)
+	}, UserID: reader.ID})
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusForbidden)
+	}
 }
 
 func TestTasksIntegration_CreateSubtask_NoAccessForbidden(t *testing.T) {
@@ -507,10 +546,12 @@ func TestTasksIntegration_CreateSubtask_NoAccessForbidden(t *testing.T) {
 	parent := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 	outsider := seed.User(t, env.Store, seed.UserInput{Name: "outsider"})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+parent.ID+"/tasks", map[string]any{
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + parent.ID + "/tasks", Body: map[string]any{
 		"name": "forbidden subtask",
-	}, outsider.ID)
-	httptestutil.AssertStatus(t, res, http.StatusForbidden)
+	}, UserID: outsider.ID})
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusForbidden)
+	}
 }
 
 func TestTasksIntegration_CreateSubtask_BlankName(t *testing.T) {
@@ -518,10 +559,12 @@ func TestTasksIntegration_CreateSubtask_BlankName(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	parent := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+parent.ID+"/tasks", map[string]any{
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + parent.ID + "/tasks", Body: map[string]any{
 		"name": "",
-	}, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusBadRequest)
+	}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
+	}
 }
 
 func TestTasksIntegration_CreateSubtask_InvalidJSON(t *testing.T) {
@@ -529,8 +572,10 @@ func TestTasksIntegration_CreateSubtask_InvalidJSON(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	parent := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
-	res := rawBody(t, env.Handler, http.MethodPost, "/tasks/"+parent.ID+"/tasks", `{invalid`, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusBadRequest)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + parent.ID + "/tasks", Body: `{invalid`, UserID: env.User.ID})
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
+	}
 }
 
 // ── GET /tasks/{taskID}/tags ─────────────────────────────────────────────────
@@ -540,8 +585,10 @@ func TestTasksIntegration_ListTags_EmptyArray(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/tasks/"+task.ID+"/tags", nil, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/tasks/" + task.ID + "/tags", Body: nil, UserID: env.User.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 
 	var tags []string
 	httptestutil.Decode(t, res, &tags)
@@ -565,8 +612,10 @@ func TestTasksIntegration_ListTags_ReturnsTags(t *testing.T) {
 		t.Fatalf("add tag: %v", err)
 	}
 
-	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/tasks/"+task.ID+"/tags", nil, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/tasks/" + task.ID + "/tags", Body: nil, UserID: env.User.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 
 	var tags []string
 	httptestutil.Decode(t, res, &tags)
@@ -581,8 +630,10 @@ func TestTasksIntegration_ListTags_ReadCanList(t *testing.T) {
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 	reader := createUserWithRole(t, env, project.ID, model.RoleRead)
 
-	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/tasks/"+task.ID+"/tags", nil, reader.ID)
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/tasks/" + task.ID + "/tags", Body: nil, UserID: reader.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 }
 
 func TestTasksIntegration_ListTags_NoAccessForbidden(t *testing.T) {
@@ -591,8 +642,10 @@ func TestTasksIntegration_ListTags_NoAccessForbidden(t *testing.T) {
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 	outsider := seed.User(t, env.Store, seed.UserInput{Name: "outsider"})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/tasks/"+task.ID+"/tags", nil, outsider.ID)
-	httptestutil.AssertStatus(t, res, http.StatusForbidden)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/tasks/" + task.ID + "/tags", Body: nil, UserID: outsider.ID})
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusForbidden)
+	}
 }
 
 // ── POST /tasks/{taskID}/tags ────────────────────────────────────────────────
@@ -602,10 +655,12 @@ func TestTasksIntegration_AddTag_OwnerAdds(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+task.ID+"/tags", map[string]any{
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + task.ID + "/tags", Body: map[string]any{
 		"tag": "important",
-	}, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusCreated)
+	}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusCreated)
+	}
 
 	var body map[string]string
 	httptestutil.Decode(t, res, &body)
@@ -634,10 +689,12 @@ func TestTasksIntegration_AddTag_ModifyMemberAdds(t *testing.T) {
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 	modifier := createUserWithRole(t, env, project.ID, model.RoleModify)
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+task.ID+"/tags", map[string]any{
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + task.ID + "/tags", Body: map[string]any{
 		"tag": "by-modifier",
-	}, modifier.ID)
-	httptestutil.AssertStatus(t, res, http.StatusCreated)
+	}, UserID: modifier.ID})
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusCreated)
+	}
 }
 
 func TestTasksIntegration_AddTag_ReadForbidden(t *testing.T) {
@@ -646,10 +703,12 @@ func TestTasksIntegration_AddTag_ReadForbidden(t *testing.T) {
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 	reader := createUserWithRole(t, env, project.ID, model.RoleRead)
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+task.ID+"/tags", map[string]any{
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + task.ID + "/tags", Body: map[string]any{
 		"tag": "blocked",
-	}, reader.ID)
-	httptestutil.AssertStatus(t, res, http.StatusForbidden)
+	}, UserID: reader.ID})
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusForbidden)
+	}
 }
 
 func TestTasksIntegration_AddTag_NoAccessForbidden(t *testing.T) {
@@ -658,10 +717,12 @@ func TestTasksIntegration_AddTag_NoAccessForbidden(t *testing.T) {
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 	outsider := seed.User(t, env.Store, seed.UserInput{Name: "outsider"})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+task.ID+"/tags", map[string]any{
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + task.ID + "/tags", Body: map[string]any{
 		"tag": "blocked",
-	}, outsider.ID)
-	httptestutil.AssertStatus(t, res, http.StatusForbidden)
+	}, UserID: outsider.ID})
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusForbidden)
+	}
 }
 
 func TestTasksIntegration_AddTag_BlankTag(t *testing.T) {
@@ -669,10 +730,12 @@ func TestTasksIntegration_AddTag_BlankTag(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+task.ID+"/tags", map[string]any{
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + task.ID + "/tags", Body: map[string]any{
 		"tag": "",
-	}, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusBadRequest)
+	}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
+	}
 }
 
 func TestTasksIntegration_AddTag_InvalidJSON(t *testing.T) {
@@ -680,8 +743,10 @@ func TestTasksIntegration_AddTag_InvalidJSON(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
-	res := rawBody(t, env.Handler, http.MethodPost, "/tasks/"+task.ID+"/tags", `{invalid`, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusBadRequest)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + task.ID + "/tags", Body: `{invalid`, UserID: env.User.ID})
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
+	}
 }
 
 // ── DELETE /tasks/{taskID}/tags/{tag} ────────────────────────────────────────
@@ -695,8 +760,10 @@ func TestTasksIntegration_DeleteTag_OwnerDeletes(t *testing.T) {
 		t.Fatalf("add tag: %v", err)
 	}
 
-	res := httptestutil.Request(t, env.Handler, http.MethodDelete, "/tasks/"+task.ID+"/tags/remove-me", nil, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusNoContent)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodDelete, Path: "/tasks/" + task.ID + "/tags/remove-me", Body: nil, UserID: env.User.ID})
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusNoContent)
+	}
 
 	tags, _ := env.Store.Tags.ListForTask(ctx, task.ID)
 	for _, tg := range tags {
@@ -716,8 +783,10 @@ func TestTasksIntegration_DeleteTag_ModifyMemberDeletes(t *testing.T) {
 	}
 	modifier := createUserWithRole(t, env, project.ID, model.RoleModify)
 
-	res := httptestutil.Request(t, env.Handler, http.MethodDelete, "/tasks/"+task.ID+"/tags/deleteme", nil, modifier.ID)
-	httptestutil.AssertStatus(t, res, http.StatusNoContent)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodDelete, Path: "/tasks/" + task.ID + "/tags/deleteme", Body: nil, UserID: modifier.ID})
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusNoContent)
+	}
 }
 
 func TestTasksIntegration_DeleteTag_ReadForbidden(t *testing.T) {
@@ -728,8 +797,10 @@ func TestTasksIntegration_DeleteTag_ReadForbidden(t *testing.T) {
 	_ = env.Store.Tags.Add(ctx, task.ID, "keep")
 	reader := createUserWithRole(t, env, project.ID, model.RoleRead)
 
-	res := httptestutil.Request(t, env.Handler, http.MethodDelete, "/tasks/"+task.ID+"/tags/keep", nil, reader.ID)
-	httptestutil.AssertStatus(t, res, http.StatusForbidden)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodDelete, Path: "/tasks/" + task.ID + "/tags/keep", Body: nil, UserID: reader.ID})
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusForbidden)
+	}
 }
 
 func TestTasksIntegration_DeleteTag_NoAccessForbidden(t *testing.T) {
@@ -738,6 +809,8 @@ func TestTasksIntegration_DeleteTag_NoAccessForbidden(t *testing.T) {
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 	outsider := seed.User(t, env.Store, seed.UserInput{Name: "outsider"})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodDelete, "/tasks/"+task.ID+"/tags/any", nil, outsider.ID)
-	httptestutil.AssertStatus(t, res, http.StatusForbidden)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodDelete, Path: "/tasks/" + task.ID + "/tags/any", Body: nil, UserID: outsider.ID})
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusForbidden)
+	}
 }

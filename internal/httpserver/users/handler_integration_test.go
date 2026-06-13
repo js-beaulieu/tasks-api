@@ -3,49 +3,20 @@
 package users_test
 
 import (
-	"io"
 	"net/http"
-	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/js-beaulieu/tasks-api/internal/model"
 	httptestutil "github.com/js-beaulieu/tasks-api/internal/testing/http"
 )
 
-func rawRequest(t *testing.T, handler http.Handler, method, path string, body io.Reader, headers map[string]string) *httptest.ResponseRecorder {
-	t.Helper()
-	req := httptest.NewRequest(method, path, body)
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-	return w
-}
-
-func requestWithHeaders(t *testing.T, handler http.Handler, method, path string, body string, userID string, extra map[string]string) *httptest.ResponseRecorder {
-	t.Helper()
-	headers := map[string]string{}
-	if userID != "" {
-		headers["X-User-ID"] = userID
-	}
-	for k, v := range extra {
-		headers[k] = v
-	}
-	var reader io.Reader
-	if body != "" {
-		reader = strings.NewReader(body)
-		headers["Content-Type"] = "application/json"
-	}
-	return rawRequest(t, handler, method, path, reader, headers)
-}
-
 func TestGetMe_ExistingUser(t *testing.T) {
 	env := httptestutil.NewEnv(t)
 
-	res := requestWithHeaders(t, env.Handler, http.MethodGet, "/users/me", "", env.User.ID, nil)
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/users/me", Body: "", UserID: env.User.ID, Headers: nil})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 
 	var got model.User
 	httptestutil.Decode(t, res, &got)
@@ -63,11 +34,13 @@ func TestGetMe_ExistingUser(t *testing.T) {
 func TestGetMe_AutoProvisions(t *testing.T) {
 	env := httptestutil.NewEnv(t)
 
-	res := requestWithHeaders(t, env.Handler, http.MethodGet, "/users/me", "", "gw-user-1", map[string]string{
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/users/me", Body: "", UserID: "gw-user-1", Headers: map[string]string{
 		"X-User-Name":  "Gateway User",
 		"X-User-Email": "gw@example.com",
-	})
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	}})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 
 	var got model.User
 	httptestutil.Decode(t, res, &got)
@@ -96,9 +69,10 @@ func TestGetMe_AutoProvisions(t *testing.T) {
 func TestPatchMe_UpdatesNameAndEmail(t *testing.T) {
 	env := httptestutil.NewEnv(t)
 
-	res := requestWithHeaders(t, env.Handler, http.MethodPatch, "/users/me",
-		`{"name":"Updated","email":"updated@example.com"}`, env.User.ID, nil)
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: "/users/me", Body: `{"name":"Updated","email":"updated@example.com"}`, UserID: env.User.ID, Headers: nil})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 
 	var got model.User
 	httptestutil.Decode(t, res, &got)
@@ -124,9 +98,10 @@ func TestPatchMe_UpdatesNameAndEmail(t *testing.T) {
 func TestPatchMe_BlankName(t *testing.T) {
 	env := httptestutil.NewEnv(t)
 
-	res := requestWithHeaders(t, env.Handler, http.MethodPatch, "/users/me",
-		`{"name":"   "}`, env.User.ID, nil)
-	httptestutil.AssertStatus(t, res, http.StatusBadRequest)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: "/users/me", Body: `{"name":"   "}`, UserID: env.User.ID, Headers: nil})
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
+	}
 
 	var body map[string]string
 	httptestutil.Decode(t, res, &body)
@@ -146,9 +121,10 @@ func TestPatchMe_BlankName(t *testing.T) {
 func TestPatchMe_BlankEmail(t *testing.T) {
 	env := httptestutil.NewEnv(t)
 
-	res := requestWithHeaders(t, env.Handler, http.MethodPatch, "/users/me",
-		`{"email":""}`, env.User.ID, nil)
-	httptestutil.AssertStatus(t, res, http.StatusBadRequest)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: "/users/me", Body: `{"email":""}`, UserID: env.User.ID, Headers: nil})
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
+	}
 
 	var body map[string]string
 	httptestutil.Decode(t, res, &body)
@@ -168,9 +144,10 @@ func TestPatchMe_BlankEmail(t *testing.T) {
 func TestPatchMe_InvalidJSON(t *testing.T) {
 	env := httptestutil.NewEnv(t)
 
-	res := requestWithHeaders(t, env.Handler, http.MethodPatch, "/users/me",
-		`not-json`, env.User.ID, nil)
-	httptestutil.AssertStatus(t, res, http.StatusBadRequest)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: "/users/me", Body: `not-json`, UserID: env.User.ID, Headers: nil})
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
+	}
 
 	var body map[string]string
 	httptestutil.Decode(t, res, &body)
@@ -182,8 +159,10 @@ func TestPatchMe_InvalidJSON(t *testing.T) {
 func TestGetUserByID_Existing(t *testing.T) {
 	env := httptestutil.NewEnv(t)
 
-	res := requestWithHeaders(t, env.Handler, http.MethodGet, "/users/"+env.User.ID, "", env.User.ID, nil)
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/users/" + env.User.ID, Body: "", UserID: env.User.ID, Headers: nil})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 
 	var got model.User
 	httptestutil.Decode(t, res, &got)
@@ -198,8 +177,10 @@ func TestGetUserByID_Existing(t *testing.T) {
 func TestGetUserByID_Missing(t *testing.T) {
 	env := httptestutil.NewEnv(t)
 
-	res := requestWithHeaders(t, env.Handler, http.MethodGet, "/users/nonexistent-id", "", env.User.ID, nil)
-	httptestutil.AssertStatus(t, res, http.StatusNotFound)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/users/nonexistent-id", Body: "", UserID: env.User.ID, Headers: nil})
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusNotFound)
+	}
 
 	var body map[string]string
 	httptestutil.Decode(t, res, &body)

@@ -19,8 +19,10 @@ func TestProjectTasksIntegration_ListRootOnly(t *testing.T) {
 	parent := seed.Task(t, env.Store, seed.TaskInput{ProjectID: p.ID, OwnerID: env.User.ID, Name: "Parent"})
 	child := seed.Task(t, env.Store, seed.TaskInput{ProjectID: p.ID, OwnerID: env.User.ID, Name: "Child", ParentID: &parent.ID})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/projects/"+p.ID+"/tasks", nil, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/projects/" + p.ID + "/tasks", Body: nil, UserID: env.User.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 
 	var tasks []*model.Task
 	httptestutil.Decode(t, res, &tasks)
@@ -43,8 +45,10 @@ func TestProjectTasksIntegration_ListFilters(t *testing.T) {
 	inProg := seed.Task(t, env.Store, seed.TaskInput{ProjectID: p.ID, OwnerID: env.User.ID, Name: "InProg Task", Status: "in_progress", AssigneeID: &assignee.ID})
 
 	t.Run("filter by status", func(t *testing.T) {
-		res := httptestutil.Request(t, env.Handler, http.MethodGet, "/projects/"+p.ID+"/tasks?status=in_progress", nil, env.User.ID)
-		httptestutil.AssertStatus(t, res, http.StatusOK)
+		res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/projects/" + p.ID + "/tasks?status=in_progress", Body: nil, UserID: env.User.ID})
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+		}
 
 		var tasks []*model.Task
 		httptestutil.Decode(t, res, &tasks)
@@ -56,8 +60,10 @@ func TestProjectTasksIntegration_ListFilters(t *testing.T) {
 	})
 
 	t.Run("filter by assignee_id", func(t *testing.T) {
-		res := httptestutil.Request(t, env.Handler, http.MethodGet, "/projects/"+p.ID+"/tasks?assignee_id="+assignee.ID, nil, env.User.ID)
-		httptestutil.AssertStatus(t, res, http.StatusOK)
+		res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/projects/" + p.ID + "/tasks?assignee_id=" + assignee.ID, Body: nil, UserID: env.User.ID})
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+		}
 
 		var tasks []*model.Task
 		httptestutil.Decode(t, res, &tasks)
@@ -80,8 +86,10 @@ func TestProjectTasksIntegration_ListFilterByTag(t *testing.T) {
 		t.Fatalf("add tag: %v", err)
 	}
 
-	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/projects/"+p.ID+"/tasks?tag=bug", nil, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/projects/" + p.ID + "/tasks?tag=bug", Body: nil, UserID: env.User.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 
 	var tasks []*model.Task
 	httptestutil.Decode(t, res, &tasks)
@@ -106,12 +114,14 @@ func TestProjectTasksIntegration_Create(t *testing.T) {
 	addMember(t, env, p.ID, reader.ID, model.RoleRead)
 
 	t.Run("owner creates task", func(t *testing.T) {
-		res := httptestutil.Request(t, env.Handler, http.MethodPost, "/projects/"+p.ID+"/tasks", map[string]any{
+		res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/projects/" + p.ID + "/tasks", Body: map[string]any{
 			"name":        "My Task",
 			"description": "task desc",
 			"due_date":    "2026-08-01",
-		}, owner.ID)
-		httptestutil.AssertStatus(t, res, http.StatusCreated)
+		}, UserID: owner.ID})
+		if res.StatusCode != http.StatusCreated {
+			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusCreated)
+		}
 
 		var task model.Task
 		httptestutil.Decode(t, res, &task)
@@ -127,43 +137,55 @@ func TestProjectTasksIntegration_Create(t *testing.T) {
 	})
 
 	t.Run("modifier creates task", func(t *testing.T) {
-		res := httptestutil.Request(t, env.Handler, http.MethodPost, "/projects/"+p.ID+"/tasks", map[string]any{
+		res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/projects/" + p.ID + "/tasks", Body: map[string]any{
 			"name": "Mod Task",
-		}, modifier.ID)
-		httptestutil.AssertStatus(t, res, http.StatusCreated)
+		}, UserID: modifier.ID})
+		if res.StatusCode != http.StatusCreated {
+			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusCreated)
+		}
 	})
 
 	t.Run("reader forbidden", func(t *testing.T) {
-		res := httptestutil.Request(t, env.Handler, http.MethodPost, "/projects/"+p.ID+"/tasks", map[string]any{
+		res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/projects/" + p.ID + "/tasks", Body: map[string]any{
 			"name": "Should Fail",
-		}, reader.ID)
-		httptestutil.AssertStatus(t, res, http.StatusForbidden)
+		}, UserID: reader.ID})
+		if res.StatusCode != http.StatusForbidden {
+			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusForbidden)
+		}
 	})
 
 	t.Run("no access forbidden", func(t *testing.T) {
-		res := httptestutil.Request(t, env.Handler, http.MethodPost, "/projects/"+p.ID+"/tasks", map[string]any{
+		res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/projects/" + p.ID + "/tasks", Body: map[string]any{
 			"name": "Should Fail",
-		}, outsider.ID)
-		httptestutil.AssertStatus(t, res, http.StatusForbidden)
+		}, UserID: outsider.ID})
+		if res.StatusCode != http.StatusForbidden {
+			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusForbidden)
+		}
 	})
 
 	t.Run("blank name 400", func(t *testing.T) {
-		res := httptestutil.Request(t, env.Handler, http.MethodPost, "/projects/"+p.ID+"/tasks", map[string]any{
+		res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/projects/" + p.ID + "/tasks", Body: map[string]any{
 			"name": "   ",
-		}, owner.ID)
-		httptestutil.AssertStatus(t, res, http.StatusBadRequest)
+		}, UserID: owner.ID})
+		if res.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
+		}
 	})
 
 	t.Run("invalid JSON 400", func(t *testing.T) {
-		res := requestRaw(t, env.Handler, http.MethodPost, "/projects/"+p.ID+"/tasks", `{bad`, owner.ID)
-		httptestutil.AssertStatus(t, res, http.StatusBadRequest)
+		res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/projects/" + p.ID + "/tasks", Body: `{bad`, UserID: owner.ID})
+		if res.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
+		}
 	})
 
 	t.Run("default status is todo", func(t *testing.T) {
-		res := httptestutil.Request(t, env.Handler, http.MethodPost, "/projects/"+p.ID+"/tasks", map[string]any{
+		res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/projects/" + p.ID + "/tasks", Body: map[string]any{
 			"name": "Default Status Task",
-		}, owner.ID)
-		httptestutil.AssertStatus(t, res, http.StatusCreated)
+		}, UserID: owner.ID})
+		if res.StatusCode != http.StatusCreated {
+			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusCreated)
+		}
 
 		var task model.Task
 		httptestutil.Decode(t, res, &task)
@@ -173,11 +195,13 @@ func TestProjectTasksIntegration_Create(t *testing.T) {
 	})
 
 	t.Run("explicit status", func(t *testing.T) {
-		res := httptestutil.Request(t, env.Handler, http.MethodPost, "/projects/"+p.ID+"/tasks", map[string]any{
+		res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/projects/" + p.ID + "/tasks", Body: map[string]any{
 			"name":   "Explicit Status",
 			"status": "in_progress",
-		}, owner.ID)
-		httptestutil.AssertStatus(t, res, http.StatusCreated)
+		}, UserID: owner.ID})
+		if res.StatusCode != http.StatusCreated {
+			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusCreated)
+		}
 
 		var task model.Task
 		httptestutil.Decode(t, res, &task)

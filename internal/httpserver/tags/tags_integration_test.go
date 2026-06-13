@@ -16,11 +16,15 @@ func TestTagsIntegration_AddAndListForTask(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
-	res := httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+task.ID+"/tags", map[string]any{"tag": "backend"}, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusCreated)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + task.ID + "/tags", Body: map[string]any{"tag": "backend"}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusCreated)
+	}
 
-	res = httptestutil.Request(t, env.Handler, http.MethodGet, "/tasks/"+task.ID+"/tags", nil, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	res = httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/tasks/" + task.ID + "/tags", Body: nil, UserID: env.User.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 
 	var tags []string
 	httptestutil.Decode(t, res, &tags)
@@ -36,18 +40,20 @@ func TestTagsIntegration_ListDistinctForUser(t *testing.T) {
 	ownProject := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID, Name: "Own Project"})
 	ownTask := seed.Task(t, env.Store, seed.TaskInput{ProjectID: ownProject.ID, OwnerID: env.User.ID})
 
-	httptestutil.AssertStatus(t,
-		httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+ownTask.ID+"/tags", map[string]any{"tag": "alpha"}, env.User.ID),
-		http.StatusCreated,
-	)
-	httptestutil.AssertStatus(t,
-		httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+ownTask.ID+"/tags", map[string]any{"tag": "beta"}, env.User.ID),
-		http.StatusCreated,
-	)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + ownTask.ID + "/tags", Body: map[string]any{"tag": "alpha"}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusCreated)
+	}
+	res = httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + ownTask.ID + "/tags", Body: map[string]any{"tag": "beta"}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusCreated)
+	}
 
 	t.Run("lists distinct tags visible to caller", func(t *testing.T) {
-		res := httptestutil.Request(t, env.Handler, http.MethodGet, "/tags", nil, env.User.ID)
-		httptestutil.AssertStatus(t, res, http.StatusOK)
+		res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/tags", Body: nil, UserID: env.User.ID})
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+		}
 
 		var tags []string
 		httptestutil.Decode(t, res, &tags)
@@ -62,8 +68,10 @@ func TestTagsIntegration_ListDistinctForUser(t *testing.T) {
 	})
 
 	t.Run("excludes tags from inaccessible projects", func(t *testing.T) {
-		res := httptestutil.Request(t, env.Handler, http.MethodGet, "/tags", nil, otherUser.ID)
-		httptestutil.AssertStatus(t, res, http.StatusOK)
+		res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/tags", Body: nil, UserID: otherUser.ID})
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+		}
 
 		var tags []string
 		httptestutil.Decode(t, res, &tags)
@@ -83,17 +91,19 @@ func TestTagsIntegration_DeduplicatesAcrossVisibleTasks(t *testing.T) {
 	task1 := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 	task2 := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
-	httptestutil.AssertStatus(t,
-		httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+task1.ID+"/tags", map[string]any{"tag": "shared"}, env.User.ID),
-		http.StatusCreated,
-	)
-	httptestutil.AssertStatus(t,
-		httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+task2.ID+"/tags", map[string]any{"tag": "shared"}, env.User.ID),
-		http.StatusCreated,
-	)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + task1.ID + "/tags", Body: map[string]any{"tag": "shared"}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusCreated)
+	}
+	res = httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + task2.ID + "/tags", Body: map[string]any{"tag": "shared"}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusCreated)
+	}
 
-	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/tags", nil, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	res = httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/tags", Body: nil, UserID: env.User.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 
 	var tags []string
 	httptestutil.Decode(t, res, &tags)
@@ -112,8 +122,10 @@ func TestTagsIntegration_DeduplicatesAcrossVisibleTasks(t *testing.T) {
 func TestTagsIntegration_EmptyResultReturnsEmptyArray(t *testing.T) {
 	env := httptestutil.NewEnv(t)
 
-	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/tags", nil, env.User.ID)
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/tags", Body: nil, UserID: env.User.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 
 	var tags []string
 	httptestutil.Decode(t, res, &tags)
@@ -133,10 +145,10 @@ func TestTagsIntegration_MemberSeesTagsFromSharedProject(t *testing.T) {
 	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
 	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
 
-	httptestutil.AssertStatus(t,
-		httptestutil.Request(t, env.Handler, http.MethodPost, "/tasks/"+task.ID+"/tags", map[string]any{"tag": "gamma"}, env.User.ID),
-		http.StatusCreated,
-	)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + task.ID + "/tags", Body: map[string]any{"tag": "gamma"}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusCreated)
+	}
 
 	if err := env.Store.Projects.AddMember(t.Context(), &model.ProjectMember{
 		ProjectID: project.ID,
@@ -146,8 +158,10 @@ func TestTagsIntegration_MemberSeesTagsFromSharedProject(t *testing.T) {
 		t.Fatalf("AddMember: %v", err)
 	}
 
-	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/tags", nil, member.ID)
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	res = httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/tags", Body: nil, UserID: member.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 
 	var tags []string
 	httptestutil.Decode(t, res, &tags)

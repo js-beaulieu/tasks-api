@@ -12,8 +12,10 @@ import (
 func TestHealthIntegration(t *testing.T) {
 	env := httptestutil.NewEnv(t)
 
-	res := httptestutil.Request(t, env.Handler, http.MethodGet, "/health", nil, "")
-	httptestutil.AssertStatus(t, res, http.StatusOK)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodGet, Path: "/health", Body: nil, UserID: ""})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
 
 	var body map[string]string
 	httptestutil.Decode(t, res, &body)
