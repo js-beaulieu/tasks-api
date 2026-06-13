@@ -17,8 +17,17 @@ import (
 
 type Env struct {
 	Store   *postgres.Store
-	Handler http.Handler
+	BaseURL string
+	Client  *http.Client
 	User    *model.User
+}
+
+type RequestOptions struct {
+	Method  string
+	Path    string
+	Body    any
+	UserID  string
+	Headers map[string]string
 }
 
 func NewEnv(t *testing.T) *Env {
@@ -29,48 +38,74 @@ func NewEnv(t *testing.T) *Env {
 	if err != nil {
 		t.Fatalf("seed HTTP user: %v", err)
 	}
+	server := httptest.NewServer(httpserver.New(store, config.Config{}))
+	t.Cleanup(server.Close)
 	return &Env{
 		Store:   store,
-		Handler: httpserver.New(store, config.Config{}),
+		BaseURL: server.URL,
+		Client:  server.Client(),
 		User:    user,
 	}
 }
 
-func Request(t *testing.T, handler http.Handler, method, path string, body map[string]any, userID string) *httptest.ResponseRecorder {
+func Request(t *testing.T, env *Env, opts RequestOptions) *http.Response {
 	t.Helper()
 
 	var reader io.Reader
-	if body != nil {
+	headers := map[string]string{}
+	if opts.UserID != "" {
+		headers["X-User-ID"] = opts.UserID
+	}
+	for k, v := range opts.Headers {
+		headers[k] = v
+	}
+	switch v := opts.Body.(type) {
+	case nil:
+	case io.Reader:
+		reader = v
+	case string:
+		reader = bytes.NewBufferString(v)
+		if v != "" && headers["Content-Type"] == "" {
+			headers["Content-Type"] = "application/json"
+		}
+	case []byte:
+		reader = bytes.NewReader(v)
+		if len(v) > 0 && headers["Content-Type"] == "" {
+			headers["Content-Type"] = "application/json"
+		}
+	default:
 		var buf bytes.Buffer
-		if err := json.NewEncoder(&buf).Encode(body); err != nil {
+		if err := json.NewEncoder(&buf).Encode(v); err != nil {
 			t.Fatalf("encode request JSON: %v", err)
 		}
 		reader = &buf
+		if headers["Content-Type"] == "" {
+			headers["Content-Type"] = "application/json"
+		}
 	}
-	req := httptest.NewRequest(method, path, reader)
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+
+	req, err := http.NewRequestWithContext(t.Context(), opts.Method, env.BaseURL+opts.Path, reader)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
 	}
-	if userID != "" {
-		req.Header.Set("X-User-ID", userID)
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-	return w
+	res, err := env.Client.Do(req)
+	if err != nil {
+		t.Fatalf("send request: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = io.Copy(io.Discard, res.Body)
+		_ = res.Body.Close()
+	})
+	return res
 }
 
-func AssertStatus(t *testing.T, res *httptest.ResponseRecorder, want int) {
-	t.Helper()
-
-	if res.Code != want {
-		t.Fatalf("status = %d, want %d, body: %s", res.Code, want, res.Body.String())
-	}
-}
-
-func Decode(t *testing.T, res *httptest.ResponseRecorder, v any) {
+func Decode(t *testing.T, res *http.Response, v any) {
 	t.Helper()
 
 	if err := json.NewDecoder(res.Body).Decode(v); err != nil {
-		t.Fatalf("decode response: %v; body: %s", err, res.Body.String())
+		t.Fatalf("decode response: %v", err)
 	}
 }
