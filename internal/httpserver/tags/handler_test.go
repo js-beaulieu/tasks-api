@@ -10,6 +10,7 @@ import (
 	"github.com/js-beaulieu/tasks-api/internal/httpserver/middleware"
 	"github.com/js-beaulieu/tasks-api/internal/httpserver/tags"
 	"github.com/js-beaulieu/tasks-api/internal/model"
+	httptestutil "github.com/js-beaulieu/tasks-api/internal/testing/http"
 	"github.com/js-beaulieu/tasks-api/internal/testing/mock"
 )
 
@@ -30,6 +31,12 @@ func newRequest(method, path string) *http.Request {
 	return req
 }
 
+func newHandler(tagRepo *mock.TagRepo) http.Handler {
+	mux, api := httptestutil.NewHumaMux("tasks-api-tags-test")
+	tags.RegisterRoutes(api, tagRepo, "")
+	return mux
+}
+
 // ── GET /tags ─────────────────────────────────────────────────────────────
 
 func TestListTags(t *testing.T) {
@@ -39,7 +46,7 @@ func TestListTags(t *testing.T) {
 				return []string{"bug", "feature", "urgent"}, nil
 			},
 		}
-		handler := tags.NewRouter(tagRepo)
+		handler := newHandler(tagRepo)
 		w := serve(handler, newRequest(http.MethodGet, "/"))
 		if w.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", w.Code)
@@ -59,7 +66,7 @@ func TestListTags(t *testing.T) {
 				return []string{}, nil
 			},
 		}
-		handler := tags.NewRouter(tagRepo)
+		handler := newHandler(tagRepo)
 		w := serve(handler, newRequest(http.MethodGet, "/"))
 		if w.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", w.Code)

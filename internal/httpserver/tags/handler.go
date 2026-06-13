@@ -1,36 +1,41 @@
 package tags
 
 import (
-	"net/http"
+	"context"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/js-beaulieu/tasks-api/internal/httpserver/middleware"
-	"github.com/js-beaulieu/tasks-api/internal/httpserver/render"
 	"github.com/js-beaulieu/tasks-api/internal/repo"
 )
 
-// Handler holds the tags repository dependency.
 type Handler struct{ tags repo.TagRepo }
 
-// NewRouter wires the /tags routes and returns the handler tree.
-func NewRouter(tags repo.TagRepo) http.Handler {
+func RegisterRoutes(api huma.API, tags repo.TagRepo, prefix string) {
 	h := &Handler{tags: tags}
-	r := chi.NewRouter()
-	r.Get("/", h.listTags)
-	return r
+	group := huma.NewGroup(api, prefix)
+	huma.Get(group, rootPath(prefix), h.listTags)
 }
 
-// listTags returns all distinct tags belonging to projects the caller is a member of.
-func (h *Handler) listTags(w http.ResponseWriter, r *http.Request) {
-	user := middleware.UserFromCtx(r.Context())
-	list, err := h.tags.ListDistinctForUser(r.Context(), user.ID)
+func rootPath(prefix string) string {
+	if prefix == "" {
+		return "/"
+	}
+	return ""
+}
+
+type listTagsOutput struct {
+	Body []string
+}
+
+func (h *Handler) listTags(ctx context.Context, _ *struct{}) (*listTagsOutput, error) {
+	user := middleware.UserFromCtx(ctx)
+	list, err := h.tags.ListDistinctForUser(ctx, user.ID)
 	if err != nil {
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	if list == nil {
 		list = []string{}
 	}
-	render.JSON(w, http.StatusOK, list)
+	return &listTagsOutput{Body: list}, nil
 }

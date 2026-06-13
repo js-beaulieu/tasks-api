@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/js-beaulieu/tasks-api/internal/config"
@@ -34,12 +33,9 @@ func NewEnv(t *testing.T) *Env {
 		t.Fatalf("seed MCP user: %v", err)
 	}
 
-	r := chi.NewRouter()
-	r.Group(func(r chi.Router) {
-		r.Use(httpmdw.AuthMiddleware(store.Users))
-		r.Handle("/mcp", mcpserver.Handler(store, config.Config{}))
-	})
-	server := httptest.NewServer(r)
+	mux := http.NewServeMux()
+	mux.Handle("/mcp", httpmdw.AuthMiddleware(store.Users)(mcpserver.Handler(store, config.Config{})))
+	server := httptest.NewServer(mux)
 
 	client := mcp.NewClient(&mcp.Implementation{Name: "tasks-api-test-client", Version: "1.0.0"}, nil)
 	transport := &mcp.StreamableClientTransport{

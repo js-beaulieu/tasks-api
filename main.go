@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/joho/godotenv"
 
 	"github.com/js-beaulieu/tasks-api/internal/config"
@@ -32,16 +31,13 @@ func main() {
 
 	store := postgres.New(db)
 
-	r := chi.NewRouter()
-	r.Use(httpmdw.Logging(cfg))
-	r.Mount("/", httpserver.New(store, cfg))
-	r.Group(func(r chi.Router) {
-		r.Use(httpmdw.AuthMiddleware(store.Users))
-		r.Handle("/mcp", mcpserver.Handler(store, cfg))
-	})
+	mux := http.NewServeMux()
+	mux.Handle("/", httpserver.New(store, cfg))
+	mux.Handle("/mcp", httpmdw.AuthMiddleware(store.Users)(mcpserver.Handler(store, cfg)))
+	h := httpmdw.Logging(cfg)(mux)
 
 	slog.Info("listening", "addr", ":"+cfg.Port)
-	if err := http.ListenAndServe(":"+cfg.Port, r); err != nil {
+	if err := http.ListenAndServe(":"+cfg.Port, h); err != nil {
 		slog.Error("server error", "err", err)
 		os.Exit(1)
 	}

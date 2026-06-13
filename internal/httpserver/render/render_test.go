@@ -90,6 +90,20 @@ func TestBadRequest(t *testing.T) {
 	}
 }
 
+func TestUnprocessableEntity(t *testing.T) {
+	w := httptest.NewRecorder()
+	render.UnprocessableEntity(w, "invalid input")
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422", w.Code)
+	}
+	var got map[string]string
+	json.NewDecoder(w.Body).Decode(&got) //nolint:errcheck
+	if got["error"] != "invalid input" {
+		t.Errorf(`body["error"] = %q, want "invalid input"`, got["error"])
+	}
+}
+
 func TestNoContent(t *testing.T) {
 	w := httptest.NewRecorder()
 	render.NoContent(w)

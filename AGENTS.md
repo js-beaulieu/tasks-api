@@ -2,6 +2,8 @@
 
 Backend API for a task management application. Exposes a REST API and an MCP (Model Context Protocol) interface, backed by Postgres.
 
+Additional long-form project documentation lives under [`docs/`](docs/README.md).
+
 ## Commands
 
 ```bash
@@ -19,15 +21,7 @@ task check                   # format + lint + build + test:coverage
 
 ## Architecture
 
-```
-main.go
-  └─ postgres.Open(PG_CONNECTION_STRING) → postgres.Store{Users, Projects, Tasks, Tags}
-  └─ chi router
-       ├─ httpserver.New(store)      → REST on /
-       └─ mcpserver.Handler(store)   → MCP StreamableHTTP on /mcp
-```
-
-All layers talk through `internal/repo` interfaces — handlers never import `postgres` directly (except `httpserver.New` / `mcpserver.Handler` which accept `*postgres.Store` at the wiring point).
+See [`docs/architecture/overview.md`](docs/architecture/overview.md) for the current runtime wiring, package map, auth model, Huma route patterns, and recurring-task behavior.
 
 ### Package map
 
@@ -38,28 +32,17 @@ All layers talk through `internal/repo` interfaces — handlers never import `po
 | `internal/store/postgres` | Concrete Postgres implementations; goose migrations in `migrations/` |
 | `internal/config` | Config struct loaded from env (PORT, PG_CONNECTION_STRING, LOG_FORMAT, LOG_LEVEL, LOG_DETAILED) |
 | `internal/logger` | slog-based logger; `logger.FromCtx` / `logger.IntoCtx` context helpers |
-| `internal/httpserver` | chi router wiring; sub-packages: middleware, projects, tasks, tags, users, render |
+| `internal/httpserver` | Huma REST API wiring; sub-packages: middleware, projects, tasks, tags, users, render |
 | `internal/mcpserver` | MCP server wiring + `withLogging` wrapper; sub-package: tools |
-| `internal/testing` | Shared test helpers: `db` (Testcontainers Postgres), `mock` (repo mocks), `seed` (test fixtures) |
+| `internal/testing` | Shared test helpers: `db` (Testcontainers Postgres), `http`, `mcp`, `mock`, `seed` |
 
 ## Domain Model
 
-```
-User          id, name, email, created_at
-Project       id, name, description*, due_date*, owner_id, assignee_id*, created_at, updated_at
-ProjectMember project_id, user_id, role (read|modify|admin)
-ProjectStatus project_id, status, position
-Task          id, project_id, parent_id*, name, description*, status, due_date*, owner_id,
-              assignee_id*, position, recurrence* (RFC 5545 RRULE), created_at, updated_at
-Tags          stored as strings in task_tags(task_id, tag)
-```
-
-Default project statuses seeded on `CreateProject`: `todo`, `in_progress`, `done`, `cancelled`.
-Task status is validated at the app layer against `project_statuses` (not a FK).
+See [`docs/architecture/overview.md`](docs/architecture/overview.md).
 
 ## Auth & Access Control
 
-Auth: `X-User-ID` header (required on all routes except `POST /login`). `AuthMiddleware` looks up the user by ID and injects `*model.User` into context. `middleware.UserFromCtx(ctx)` panics if called without middleware — intentional.
+Auth: `X-User-ID` header (required on all protected REST routes and on `/mcp`). `AuthMiddleware` looks up the user by ID and injects `*model.User` into context. `middleware.UserFromCtx(ctx)` panics if called without middleware — intentional.
 
 Roles: `read(1) < modify(2) < admin(3)`. `RequireRole(min, actual string) bool` in `internal/httpserver/projects/access.go`.
 
@@ -74,9 +57,9 @@ Roles: `read(1) < modify(2) < admin(3)`. `RequireRole(min, actual string) bool` 
 
 `GetMemberRole` returns `"admin"` implicitly when `userID == project.OwnerID`.
 
-## Recurring tasks
+## Recurring Tasks
 
-`POST /tasks/{id}/complete` (HTTP) / `complete_task` (MCP) is the only trigger for recurrence — plain status updates do not fire it. If the task has `recurrence` (RFC 5545 RRULE) **and** `due_date`, it marks the task done and creates the next occurrence with `due_date = nextOccurrence(due, rrule)` and `status = first project status (lowest position)`. Tags are copied. Returns `{completed, next}` (`next` is null for non-recurring tasks).
+See [`docs/architecture/overview.md`](docs/architecture/overview.md).
 
 ## MCP
 
@@ -84,46 +67,20 @@ All MCP tools accept `user_id` for access control. Tools are registered via a `w
 
 ## Key Patterns
 
-**Context loading middleware:** both `projectCtx` and `taskCtx` middlewares load the entity + caller's role into the request context before the handler runs. Handlers call `projectFromCtx` / `taskFromCtx` and `roleFromCtx` / `taskRoleFromCtx`.
-
-**`nullable[T]` type** (`internal/httpserver/tasks/handler.go`): distinguishes JSON field absent (`Set=false`) from present-but-null (`Set=true, Value=nil`). Used for `parent_id` in PATCH to allow explicit null (detach from parent).
-
-**Store transactions:** all multi-step writes (Create task with position, Update task with sibling reordering, CompleteTask with next-occurrence creation) run in a single `sql.Tx`.
-
-**Cycle guard:** `Update` uses a recursive CTE to detect if reparenting a task would create a cycle.
-
-**Position management:** tasks within a sibling group are ordered by `position` (integer). Create appends (`MAX(position)+1`). Move compacts the old group and shifts the new group. Same-parent reorders shift only the affected range.
+- Huma HTTP packages expose `RegisterRoutes(api, ...)`.
+- Optional Huma request-body fields keep `json:",omitempty"` so Huma treats them as optional.
+- Pointer fields still carry PATCH semantics (`nil` means omitted).
+- `tasks.nullable[T]` is used where explicit JSON `null` must differ from omission.
+- Multi-step writes run in a single `sql.Tx`.
+- Task reparenting uses a recursive CTE cycle guard.
+- Task ordering is maintained by integer `position` within a sibling group.
 
 ## Testing
 
 - **Unit tests** (`internal/httpserver/...`): mock repos via `internal/testing/mock/`, `httptest.NewRecorder`, no DB
 - **Integration tests** (`internal/store/postgres/...`): build tag `//go:build integration`, real Postgres via `testcontainers-go`, migrations run via `db.Open`
+- **Standalone Huma test mux**: use `internal/testing/http` so production handlers only expose `RegisterRoutes(...)`
 - **Isolation pattern** when adding new store tests: run new tests with `-run TestNewFeature` separately from existing tests to avoid nil-pointer panics hiding regressions
-
-## Structure
-
-```
-main.go
-internal/
-  config/           env-based config
-  logger/           slog context helpers
-  model/            domain types
-  repo/             interfaces + sentinel errors
-  store/postgres/   concrete implementations + goose migrations
-  httpserver/
-    middleware/     auth (X-User-ID), logging (request ID, body)
-    projects/       handler + access.go (RequireRole)
-    tasks/          handler (includes nullable[T])
-    tags/           handler
-    users/          handler
-    render/         JSON/error helpers
-  mcpserver/
-    tools/          one file per entity (projects, tasks, tags)
-  testing/
-    db/             Testcontainers Postgres helper
-    mock/           repo mock implementations
-    seed/           test fixture builders
-```
 
 ## Branching
 

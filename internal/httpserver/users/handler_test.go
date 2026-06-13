@@ -10,6 +10,7 @@ import (
 	"github.com/js-beaulieu/tasks-api/internal/httpserver/middleware"
 	"github.com/js-beaulieu/tasks-api/internal/httpserver/users"
 	"github.com/js-beaulieu/tasks-api/internal/model"
+	httptestutil "github.com/js-beaulieu/tasks-api/internal/testing/http"
 	"github.com/js-beaulieu/tasks-api/internal/testing/mock"
 )
 
@@ -18,11 +19,17 @@ func authed(m *mock.UserRepo, h http.Handler) http.Handler {
 	return middleware.AuthMiddleware(m)(h)
 }
 
+func newHandler(m *mock.UserRepo) http.Handler {
+	mux, api := httptestutil.NewHumaMux("tasks-api-users-test")
+	users.RegisterRoutes(api, m, "")
+	return mux
+}
+
 func TestGetMe(t *testing.T) {
 	t.Run("valid X-User-ID returns 200 and user JSON", func(t *testing.T) {
 		u := &model.User{ID: "user-1", Name: "Alice", Email: "alice@example.com"}
 		m := &mock.UserRepo{User: u}
-		handler := authed(m, users.NewRouter(m))
+		handler := authed(m, newHandler(m))
 
 		req := httptest.NewRequest(http.MethodGet, "/me", nil)
 		req.Header.Set("X-User-ID", "user-1")
@@ -46,7 +53,7 @@ func TestGetMe(t *testing.T) {
 
 	t.Run("missing X-User-ID returns 401", func(t *testing.T) {
 		m := &mock.UserRepo{}
-		handler := authed(m, users.NewRouter(m))
+		handler := authed(m, newHandler(m))
 
 		req := httptest.NewRequest(http.MethodGet, "/me", nil)
 		w := httptest.NewRecorder()
@@ -65,7 +72,7 @@ func TestGetUserByID(t *testing.T) {
 	t.Run("existing user returns 200", func(t *testing.T) {
 		u := &model.User{ID: "user-1", Name: "Alice", Email: "alice@example.com"}
 		m := &mock.UserRepo{User: u}
-		handler := authed(m, users.NewRouter(m))
+		handler := authed(m, newHandler(m))
 
 		req := httptest.NewRequest(http.MethodGet, "/user-1", nil)
 		req.Header.Set("X-User-ID", "user-1")
@@ -90,7 +97,7 @@ func TestUpdateMe(t *testing.T) {
 	t.Run("valid patch returns updated user", func(t *testing.T) {
 		u := &model.User{ID: "user-1", Name: "Alice", Email: "alice@example.com"}
 		m := &mock.UserRepo{User: u}
-		handler := authed(m, users.NewRouter(m))
+		handler := authed(m, newHandler(m))
 
 		req := httptest.NewRequest(http.MethodPatch, "/me", strings.NewReader(`{"name":"Alicia"}`))
 		req.Header.Set("X-User-ID", "user-1")
@@ -110,40 +117,40 @@ func TestUpdateMe(t *testing.T) {
 		}
 	})
 
-	t.Run("blank name returns 400", func(t *testing.T) {
+	t.Run("blank name returns 422", func(t *testing.T) {
 		u := &model.User{ID: "user-1", Name: "Alice", Email: "alice@example.com"}
 		m := &mock.UserRepo{User: u}
-		handler := authed(m, users.NewRouter(m))
+		handler := authed(m, newHandler(m))
 
 		req := httptest.NewRequest(http.MethodPatch, "/me", strings.NewReader(`{"name":"   "}`))
 		req.Header.Set("X-User-ID", "user-1")
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("status = %d, want 400", w.Code)
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Errorf("status = %d, want 422", w.Code)
 		}
 	})
 
-	t.Run("blank email returns 400", func(t *testing.T) {
+	t.Run("blank email returns 422", func(t *testing.T) {
 		u := &model.User{ID: "user-1", Name: "Alice", Email: "alice@example.com"}
 		m := &mock.UserRepo{User: u}
-		handler := authed(m, users.NewRouter(m))
+		handler := authed(m, newHandler(m))
 
 		req := httptest.NewRequest(http.MethodPatch, "/me", strings.NewReader(`{"email":""}`))
 		req.Header.Set("X-User-ID", "user-1")
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("status = %d, want 400", w.Code)
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Errorf("status = %d, want 422", w.Code)
 		}
 	})
 
 	t.Run("invalid JSON returns 400", func(t *testing.T) {
 		u := &model.User{ID: "user-1", Name: "Alice", Email: "alice@example.com"}
 		m := &mock.UserRepo{User: u}
-		handler := authed(m, users.NewRouter(m))
+		handler := authed(m, newHandler(m))
 
 		req := httptest.NewRequest(http.MethodPatch, "/me", strings.NewReader(`not-json`))
 		req.Header.Set("X-User-ID", "user-1")

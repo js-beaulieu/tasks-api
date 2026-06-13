@@ -2,415 +2,452 @@ package projects
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 
 	"github.com/js-beaulieu/tasks-api/internal/httpserver/middleware"
-	"github.com/js-beaulieu/tasks-api/internal/httpserver/render"
 	"github.com/js-beaulieu/tasks-api/internal/model"
 	"github.com/js-beaulieu/tasks-api/internal/repo"
 )
 
-type projectCtxKey struct{}
-type roleCtxKey struct{}
-
-func projectFromCtx(ctx context.Context) *model.Project {
-	p, _ := ctx.Value(projectCtxKey{}).(*model.Project)
-	return p
-}
-
-func roleFromCtx(ctx context.Context) string {
-	r, _ := ctx.Value(roleCtxKey{}).(string)
-	return r
-}
-
-// Handler holds the projects and tasks repository dependencies.
 type Handler struct {
 	projects repo.ProjectRepo
 	tasks    repo.TaskRepo
 }
 
-// NewRouter wires all /projects routes and returns the handler tree.
-func NewRouter(projects repo.ProjectRepo, tasks repo.TaskRepo) http.Handler {
+func RegisterRoutes(api huma.API, projects repo.ProjectRepo, tasks repo.TaskRepo, prefix string) {
 	h := &Handler{projects: projects, tasks: tasks}
-	r := chi.NewRouter()
+	group := huma.NewGroup(api, prefix)
 
-	r.Get("/", h.list)
-	r.Post("/", h.create)
-
-	r.Route("/{projectID}", func(r chi.Router) {
-		r.Use(h.projectCtx)
-		r.Get("/", h.get)
-		r.Patch("/", h.update)
-		r.Delete("/", h.delete)
-
-		r.Get("/members", h.listMembers)
-		r.Post("/members", h.addMember)
-		r.Patch("/members/{userID}", h.updateMember)
-		r.Delete("/members/{userID}", h.removeMember)
-
-		r.Get("/statuses", h.listStatuses)
-		r.Post("/statuses", h.addStatus)
-		r.Delete("/statuses/{status}", h.deleteStatus)
-
-		r.Get("/tasks", h.listTasks)
-		r.Post("/tasks", h.createTask)
-	})
-
-	return r
+	huma.Get(group, rootPath(prefix), h.list)
+	huma.Post(group, rootPath(prefix), h.create)
+	huma.Get(group, "/{projectID}", h.get)
+	huma.Patch(group, "/{projectID}", h.update)
+	huma.Delete(group, "/{projectID}", h.delete)
+	huma.Get(group, "/{projectID}/members", h.listMembers)
+	huma.Post(group, "/{projectID}/members", h.addMember)
+	huma.Patch(group, "/{projectID}/members/{userID}", h.updateMember)
+	huma.Delete(group, "/{projectID}/members/{userID}", h.removeMember)
+	huma.Get(group, "/{projectID}/statuses", h.listStatuses)
+	huma.Post(group, "/{projectID}/statuses", h.addStatus)
+	huma.Delete(group, "/{projectID}/statuses/{status}", h.deleteStatus)
+	huma.Get(group, "/{projectID}/tasks", h.listTasks)
+	huma.Post(group, "/{projectID}/tasks", h.createTask)
 }
 
-// projectCtx loads the project and the caller's role into the request context.
-func (h *Handler) projectCtx(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := chi.URLParam(r, "projectID")
-		p, err := h.projects.Get(r.Context(), id)
-		if err != nil {
-			if errors.Is(err, repo.ErrNotFound) {
-				render.NotFound(w)
-			} else {
-				render.Error(w, http.StatusInternalServerError, "internal error")
-			}
-			return
-		}
-
-		user := middleware.UserFromCtx(r.Context())
-		role, err := h.projects.GetMemberRole(r.Context(), id, user.ID)
-		if err != nil {
-			render.Forbidden(w)
-			return
-		}
-
-		ctx := context.WithValue(r.Context(), projectCtxKey{}, p)
-		ctx = context.WithValue(ctx, roleCtxKey{}, role)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-// ── Projects CRUD ──────────────────────────────────────────────────────────
-
-func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
-	user := middleware.UserFromCtx(r.Context())
-	list, err := h.projects.List(r.Context(), user.ID)
-	if err != nil {
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
+func rootPath(prefix string) string {
+	if prefix == "" {
+		return "/"
 	}
-	render.JSON(w, http.StatusOK, list)
+	return ""
 }
 
-type createProjectReq struct {
-	Name        string   `json:"name"`
-	Description *string  `json:"description"`
-	DueDate     *string  `json:"due_date"`
-	AssigneeID  *string  `json:"assignee_id"`
+func (h *Handler) loadProject(ctx context.Context, projectID string) (*model.Project, string, error) {
+	p, err := h.projects.Get(ctx, projectID)
+	if err != nil {
+		return nil, "", err
+	}
+	user := middleware.UserFromCtx(ctx)
+	role, err := h.projects.GetMemberRole(ctx, projectID, user.ID)
+	if err != nil {
+		return nil, "", repo.ErrNoAccess
+	}
+	return p, role, nil
+}
+
+type projectOutput struct {
+	Body *model.Project
+}
+
+type projectListOutput struct {
+	Body []*model.Project
+}
+
+func (h *Handler) list(ctx context.Context, _ *struct{}) (*projectListOutput, error) {
+	user := middleware.UserFromCtx(ctx)
+	list, err := h.projects.List(ctx, user.ID)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("internal error")
+	}
+	return &projectListOutput{Body: list}, nil
+}
+
+type createProjectBody struct {
+	Name        string   `json:"name" minLength:"1"`
+	Description *string  `json:"description,omitempty"`
+	DueDate     *string  `json:"due_date,omitempty"`
+	AssigneeID  *string  `json:"assignee_id,omitempty"`
 	Statuses    []string `json:"statuses,omitempty"`
 }
 
-func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
-	var body createProjectReq
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		render.BadRequest(w, "invalid JSON")
-		return
+type createProjectInput struct {
+	Body createProjectBody
+}
+
+type createdProjectOutput struct {
+	Status int `status:"201"`
+	Body   *model.Project
+}
+
+func (h *Handler) create(ctx context.Context, input *createProjectInput) (*createdProjectOutput, error) {
+	if strings.TrimSpace(input.Body.Name) == "" {
+		return nil, huma.Error422UnprocessableEntity("name is required")
 	}
-	if strings.TrimSpace(body.Name) == "" {
-		render.BadRequest(w, "name is required")
-		return
-	}
-	user := middleware.UserFromCtx(r.Context())
+	user := middleware.UserFromCtx(ctx)
 	p := &model.Project{
 		ID:          uuid.New().String(),
-		Name:        body.Name,
-		Description: body.Description,
-		DueDate:     body.DueDate,
+		Name:        input.Body.Name,
+		Description: input.Body.Description,
+		DueDate:     input.Body.DueDate,
 		OwnerID:     user.ID,
-		AssigneeID:  body.AssigneeID,
+		AssigneeID:  input.Body.AssigneeID,
 	}
-	if err := h.projects.Create(r.Context(), p, body.Statuses...); err != nil {
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
+	if err := h.projects.Create(ctx, p, input.Body.Statuses...); err != nil {
+		return nil, huma.Error500InternalServerError("internal error")
 	}
-	render.JSON(w, http.StatusCreated, p)
+	return &createdProjectOutput{Status: http.StatusCreated, Body: p}, nil
 }
 
-func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
-	render.JSON(w, http.StatusOK, projectFromCtx(r.Context()))
+type projectInput struct {
+	ProjectID string `path:"projectID"`
 }
 
-type updateProjectReq struct {
-	Name        *string `json:"name"`
-	Description *string `json:"description"`
-	DueDate     *string `json:"due_date"`
-	AssigneeID  *string `json:"assignee_id"`
-}
-
-func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
-	if !RequireRole(model.RoleModify, roleFromCtx(r.Context())) {
-		render.Forbidden(w)
-		return
-	}
-	var body updateProjectReq
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		render.BadRequest(w, "invalid JSON")
-		return
-	}
-	p := projectFromCtx(r.Context())
-	if body.Name != nil {
-		p.Name = *body.Name
-	}
-	if body.Description != nil {
-		p.Description = body.Description
-	}
-	if body.DueDate != nil {
-		p.DueDate = body.DueDate
-	}
-	if body.AssigneeID != nil {
-		p.AssigneeID = body.AssigneeID
-	}
-	if err := h.projects.Update(r.Context(), p); err != nil {
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	render.JSON(w, http.StatusOK, p)
-}
-
-func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
-	if !RequireRole(model.RoleAdmin, roleFromCtx(r.Context())) {
-		render.Forbidden(w)
-		return
-	}
-	p := projectFromCtx(r.Context())
-	if err := h.projects.Delete(r.Context(), p.ID); err != nil {
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	render.NoContent(w)
-}
-
-// ── Members ────────────────────────────────────────────────────────────────
-
-func (h *Handler) listMembers(w http.ResponseWriter, r *http.Request) {
-	p := projectFromCtx(r.Context())
-	members, err := h.projects.ListMembers(r.Context(), p.ID)
+func (h *Handler) get(ctx context.Context, input *projectInput) (*projectOutput, error) {
+	p, _, err := h.loadProject(ctx, input.ProjectID)
 	if err != nil {
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
+		return nil, projectError(err)
 	}
-	render.JSON(w, http.StatusOK, members)
+	return &projectOutput{Body: p}, nil
 }
 
-type addMemberReq struct {
-	UserID string `json:"user_id"`
+type updateProjectBody struct {
+	Name        *string `json:"name,omitempty"`
+	Description *string `json:"description,omitempty"`
+	DueDate     *string `json:"due_date,omitempty"`
+	AssigneeID  *string `json:"assignee_id,omitempty"`
+}
+
+type updateProjectInput struct {
+	ProjectID string `path:"projectID"`
+	Body      updateProjectBody
+}
+
+func (h *Handler) update(ctx context.Context, input *updateProjectInput) (*projectOutput, error) {
+	p, role, err := h.loadProject(ctx, input.ProjectID)
+	if err != nil {
+		return nil, projectError(err)
+	}
+	if !RequireRole(model.RoleModify, role) {
+		return nil, huma.Error403Forbidden("forbidden")
+	}
+	if input.Body.Name != nil {
+		p.Name = *input.Body.Name
+	}
+	if input.Body.Description != nil {
+		p.Description = input.Body.Description
+	}
+	if input.Body.DueDate != nil {
+		p.DueDate = input.Body.DueDate
+	}
+	if input.Body.AssigneeID != nil {
+		p.AssigneeID = input.Body.AssigneeID
+	}
+	if err := h.projects.Update(ctx, p); err != nil {
+		return nil, huma.Error500InternalServerError("internal error")
+	}
+	return &projectOutput{Body: p}, nil
+}
+
+func (h *Handler) delete(ctx context.Context, input *projectInput) (*struct{}, error) {
+	p, role, err := h.loadProject(ctx, input.ProjectID)
+	if err != nil {
+		return nil, projectError(err)
+	}
+	if !RequireRole(model.RoleAdmin, role) {
+		return nil, huma.Error403Forbidden("forbidden")
+	}
+	if err := h.projects.Delete(ctx, p.ID); err != nil {
+		return nil, huma.Error500InternalServerError("internal error")
+	}
+	return nil, nil
+}
+
+type memberListOutput struct {
+	Body []*model.ProjectMember
+}
+
+func (h *Handler) listMembers(ctx context.Context, input *projectInput) (*memberListOutput, error) {
+	p, _, err := h.loadProject(ctx, input.ProjectID)
+	if err != nil {
+		return nil, projectError(err)
+	}
+	members, err := h.projects.ListMembers(ctx, p.ID)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("internal error")
+	}
+	return &memberListOutput{Body: members}, nil
+}
+
+type addMemberBody struct {
+	UserID string `json:"user_id" minLength:"1"`
 	Role   string `json:"role"`
 }
 
-func (h *Handler) addMember(w http.ResponseWriter, r *http.Request) {
-	if !RequireRole(model.RoleAdmin, roleFromCtx(r.Context())) {
-		render.Forbidden(w)
-		return
-	}
-	var body addMemberReq
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		render.BadRequest(w, "invalid JSON")
-		return
-	}
-	if strings.TrimSpace(body.UserID) == "" {
-		render.BadRequest(w, "user_id is required")
-		return
-	}
-	if !validRole(body.Role) {
-		render.BadRequest(w, "role must be read, modify, or admin")
-		return
-	}
-	caller := middleware.UserFromCtx(r.Context())
-	if body.UserID == caller.ID {
-		render.BadRequest(w, "cannot add yourself as a member")
-		return
-	}
-	p := projectFromCtx(r.Context())
-	m := &model.ProjectMember{ProjectID: p.ID, UserID: body.UserID, Role: body.Role}
-	if err := h.projects.AddMember(r.Context(), m); err != nil {
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	render.JSON(w, http.StatusCreated, m)
+type addMemberInput struct {
+	ProjectID string `path:"projectID"`
+	Body      addMemberBody
 }
 
-type updateMemberReq struct {
+type createdMemberOutput struct {
+	Status int `status:"201"`
+	Body   *model.ProjectMember
+}
+
+func (h *Handler) addMember(ctx context.Context, input *addMemberInput) (*createdMemberOutput, error) {
+	p, role, err := h.loadProject(ctx, input.ProjectID)
+	if err != nil {
+		return nil, projectError(err)
+	}
+	if !RequireRole(model.RoleAdmin, role) {
+		return nil, huma.Error403Forbidden("forbidden")
+	}
+	if strings.TrimSpace(input.Body.UserID) == "" {
+		return nil, huma.Error422UnprocessableEntity("user_id is required")
+	}
+	if !validRole(input.Body.Role) {
+		return nil, huma.Error422UnprocessableEntity("role must be read, modify, or admin")
+	}
+	caller := middleware.UserFromCtx(ctx)
+	if input.Body.UserID == caller.ID {
+		return nil, huma.Error422UnprocessableEntity("cannot add yourself as a member")
+	}
+	m := &model.ProjectMember{ProjectID: p.ID, UserID: input.Body.UserID, Role: input.Body.Role}
+	if err := h.projects.AddMember(ctx, m); err != nil {
+		return nil, huma.Error500InternalServerError("internal error")
+	}
+	return &createdMemberOutput{Status: http.StatusCreated, Body: m}, nil
+}
+
+type updateMemberBody struct {
 	Role string `json:"role"`
 }
 
-func (h *Handler) updateMember(w http.ResponseWriter, r *http.Request) {
-	if !RequireRole(model.RoleAdmin, roleFromCtx(r.Context())) {
-		render.Forbidden(w)
-		return
-	}
-	var body updateMemberReq
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		render.BadRequest(w, "invalid JSON")
-		return
-	}
-	if !validRole(body.Role) {
-		render.BadRequest(w, "role must be read, modify, or admin")
-		return
-	}
-	p := projectFromCtx(r.Context())
-	userID := chi.URLParam(r, "userID")
-	if userID == p.OwnerID {
-		render.BadRequest(w, "cannot change role of project owner")
-		return
-	}
-	if err := h.projects.UpdateMemberRole(r.Context(), p.ID, userID, body.Role); err != nil {
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	render.JSON(w, http.StatusOK, map[string]string{"project_id": p.ID, "user_id": userID, "role": body.Role})
+type updateMemberInput struct {
+	ProjectID string `path:"projectID"`
+	UserID    string `path:"userID"`
+	Body      updateMemberBody
 }
 
-func (h *Handler) removeMember(w http.ResponseWriter, r *http.Request) {
-	if !RequireRole(model.RoleAdmin, roleFromCtx(r.Context())) {
-		render.Forbidden(w)
-		return
-	}
-	p := projectFromCtx(r.Context())
-	userID := chi.URLParam(r, "userID")
-	if userID == p.OwnerID {
-		render.BadRequest(w, "cannot remove project owner")
-		return
-	}
-	if err := h.projects.RemoveMember(r.Context(), p.ID, userID); err != nil {
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	render.NoContent(w)
+type memberOutput struct {
+	Body map[string]string
 }
 
-// ── Statuses ───────────────────────────────────────────────────────────────
-
-func (h *Handler) listStatuses(w http.ResponseWriter, r *http.Request) {
-	p := projectFromCtx(r.Context())
-	statuses, err := h.projects.ListStatuses(r.Context(), p.ID)
+func (h *Handler) updateMember(ctx context.Context, input *updateMemberInput) (*memberOutput, error) {
+	p, role, err := h.loadProject(ctx, input.ProjectID)
 	if err != nil {
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
+		return nil, projectError(err)
 	}
-	render.JSON(w, http.StatusOK, statuses)
+	if !RequireRole(model.RoleAdmin, role) {
+		return nil, huma.Error403Forbidden("forbidden")
+	}
+	if !validRole(input.Body.Role) {
+		return nil, huma.Error422UnprocessableEntity("role must be read, modify, or admin")
+	}
+	if input.UserID == p.OwnerID {
+		return nil, huma.Error422UnprocessableEntity("cannot change role of project owner")
+	}
+	if err := h.projects.UpdateMemberRole(ctx, p.ID, input.UserID, input.Body.Role); err != nil {
+		return nil, huma.Error500InternalServerError("internal error")
+	}
+	return &memberOutput{Body: map[string]string{"project_id": p.ID, "user_id": input.UserID, "role": input.Body.Role}}, nil
 }
 
-type addStatusReq struct {
-	Status string `json:"status"`
+type removeMemberInput struct {
+	ProjectID string `path:"projectID"`
+	UserID    string `path:"userID"`
 }
 
-func (h *Handler) addStatus(w http.ResponseWriter, r *http.Request) {
-	if !RequireRole(model.RoleAdmin, roleFromCtx(r.Context())) {
-		render.Forbidden(w)
-		return
+func (h *Handler) removeMember(ctx context.Context, input *removeMemberInput) (*struct{}, error) {
+	p, role, err := h.loadProject(ctx, input.ProjectID)
+	if err != nil {
+		return nil, projectError(err)
 	}
-	var body addStatusReq
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		render.BadRequest(w, "invalid JSON")
-		return
+	if !RequireRole(model.RoleAdmin, role) {
+		return nil, huma.Error403Forbidden("forbidden")
 	}
-	if strings.TrimSpace(body.Status) == "" {
-		render.BadRequest(w, "status is required")
-		return
+	if input.UserID == p.OwnerID {
+		return nil, huma.Error422UnprocessableEntity("cannot remove project owner")
 	}
-	p := projectFromCtx(r.Context())
-	if err := h.projects.AddStatus(r.Context(), p.ID, body.Status); err != nil {
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
+	if err := h.projects.RemoveMember(ctx, p.ID, input.UserID); err != nil {
+		return nil, huma.Error500InternalServerError("internal error")
 	}
-	render.JSON(w, http.StatusCreated, map[string]string{"project_id": p.ID, "status": body.Status})
+	return nil, nil
 }
 
-func (h *Handler) deleteStatus(w http.ResponseWriter, r *http.Request) {
-	if !RequireRole(model.RoleAdmin, roleFromCtx(r.Context())) {
-		render.Forbidden(w)
-		return
+type statusListOutput struct {
+	Body []*model.ProjectStatus
+}
+
+func (h *Handler) listStatuses(ctx context.Context, input *projectInput) (*statusListOutput, error) {
+	p, _, err := h.loadProject(ctx, input.ProjectID)
+	if err != nil {
+		return nil, projectError(err)
 	}
-	p := projectFromCtx(r.Context())
-	status := chi.URLParam(r, "status")
-	err := h.projects.DeleteStatus(r.Context(), p.ID, status)
+	statuses, err := h.projects.ListStatuses(ctx, p.ID)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("internal error")
+	}
+	return &statusListOutput{Body: statuses}, nil
+}
+
+type addStatusBody struct {
+	Status string `json:"status" minLength:"1"`
+}
+
+type addStatusInput struct {
+	ProjectID string `path:"projectID"`
+	Body      addStatusBody
+}
+
+type statusOutput struct {
+	Status int `status:"201"`
+	Body   map[string]string
+}
+
+func (h *Handler) addStatus(ctx context.Context, input *addStatusInput) (*statusOutput, error) {
+	p, role, err := h.loadProject(ctx, input.ProjectID)
+	if err != nil {
+		return nil, projectError(err)
+	}
+	if !RequireRole(model.RoleAdmin, role) {
+		return nil, huma.Error403Forbidden("forbidden")
+	}
+	if strings.TrimSpace(input.Body.Status) == "" {
+		return nil, huma.Error422UnprocessableEntity("status is required")
+	}
+	if err := h.projects.AddStatus(ctx, p.ID, input.Body.Status); err != nil {
+		return nil, huma.Error500InternalServerError("internal error")
+	}
+	return &statusOutput{Status: http.StatusCreated, Body: map[string]string{"project_id": p.ID, "status": input.Body.Status}}, nil
+}
+
+type deleteStatusInput struct {
+	ProjectID string `path:"projectID"`
+	Status    string `path:"status"`
+}
+
+func (h *Handler) deleteStatus(ctx context.Context, input *deleteStatusInput) (*struct{}, error) {
+	p, role, err := h.loadProject(ctx, input.ProjectID)
+	if err != nil {
+		return nil, projectError(err)
+	}
+	if !RequireRole(model.RoleAdmin, role) {
+		return nil, huma.Error403Forbidden("forbidden")
+	}
+	err = h.projects.DeleteStatus(ctx, p.ID, input.Status)
 	if err != nil {
 		if errors.Is(err, repo.ErrConflict) {
-			render.Error(w, http.StatusConflict, "status is in use by tasks")
-			return
+			return nil, huma.Error409Conflict("status is in use by tasks")
 		}
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
+		return nil, huma.Error500InternalServerError("internal error")
 	}
-	render.NoContent(w)
+	return nil, nil
 }
 
-// ── Tasks ──────────────────────────────────────────────────────────────────
+type listTasksInput struct {
+	ProjectID  string `path:"projectID"`
+	Status     string `query:"status"`
+	AssigneeID string `query:"assignee_id"`
+	Tag        string `query:"tag"`
+}
 
-func (h *Handler) listTasks(w http.ResponseWriter, r *http.Request) {
-	p := projectFromCtx(r.Context())
-	q := r.URL.Query()
-	var f repo.TaskFilter
-	if s := q.Get("status"); s != "" {
-		f.Status = &s
-	}
-	if a := q.Get("assignee_id"); a != "" {
-		f.AssigneeID = &a
-	}
-	if tag := q.Get("tag"); tag != "" {
-		f.Tag = &tag
-	}
-	list, err := h.tasks.ListChildren(r.Context(), p.ID, nil, f)
+type taskListOutput struct {
+	Body []*model.Task
+}
+
+func (h *Handler) listTasks(ctx context.Context, input *listTasksInput) (*taskListOutput, error) {
+	p, _, err := h.loadProject(ctx, input.ProjectID)
 	if err != nil {
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
+		return nil, projectError(err)
 	}
-	render.JSON(w, http.StatusOK, list)
+	list, err := h.tasks.ListChildren(ctx, p.ID, nil, repo.TaskFilter{
+		Status:     stringPtr(input.Status),
+		AssigneeID: stringPtr(input.AssigneeID),
+		Tag:        stringPtr(input.Tag),
+	})
+	if err != nil {
+		return nil, huma.Error500InternalServerError("internal error")
+	}
+	return &taskListOutput{Body: list}, nil
 }
 
-type createTaskReq struct {
-	Name        string  `json:"name"`
-	Description *string `json:"description"`
-	Status      *string `json:"status"`
-	DueDate     *string `json:"due_date"`
-	AssigneeID  *string `json:"assignee_id"`
+func stringPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
-func (h *Handler) createTask(w http.ResponseWriter, r *http.Request) {
-	if !RequireRole(model.RoleModify, roleFromCtx(r.Context())) {
-		render.Forbidden(w)
-		return
+type createTaskBody struct {
+	Name        string  `json:"name" minLength:"1"`
+	Description *string `json:"description,omitempty"`
+	Status      *string `json:"status,omitempty"`
+	DueDate     *string `json:"due_date,omitempty"`
+	AssigneeID  *string `json:"assignee_id,omitempty"`
+}
+
+type createTaskInput struct {
+	ProjectID string `path:"projectID"`
+	Body      createTaskBody
+}
+
+type createdTaskOutput struct {
+	Status int `status:"201"`
+	Body   *model.Task
+}
+
+func (h *Handler) createTask(ctx context.Context, input *createTaskInput) (*createdTaskOutput, error) {
+	p, role, err := h.loadProject(ctx, input.ProjectID)
+	if err != nil {
+		return nil, projectError(err)
 	}
-	var body createTaskReq
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		render.BadRequest(w, "invalid JSON")
-		return
+	if !RequireRole(model.RoleModify, role) {
+		return nil, huma.Error403Forbidden("forbidden")
 	}
-	if strings.TrimSpace(body.Name) == "" {
-		render.BadRequest(w, "name is required")
-		return
+	if strings.TrimSpace(input.Body.Name) == "" {
+		return nil, huma.Error422UnprocessableEntity("name is required")
 	}
-	p := projectFromCtx(r.Context())
-	user := middleware.UserFromCtx(r.Context())
+	user := middleware.UserFromCtx(ctx)
 	status := "todo"
-	if body.Status != nil {
-		status = *body.Status
+	if input.Body.Status != nil {
+		status = *input.Body.Status
 	}
 	t := &model.Task{
 		ID:          uuid.New().String(),
 		ProjectID:   p.ID,
-		Name:        body.Name,
-		Description: body.Description,
+		Name:        input.Body.Name,
+		Description: input.Body.Description,
 		Status:      status,
-		DueDate:     body.DueDate,
+		DueDate:     input.Body.DueDate,
 		OwnerID:     user.ID,
-		AssigneeID:  body.AssigneeID,
+		AssigneeID:  input.Body.AssigneeID,
 	}
-	if err := h.tasks.Create(r.Context(), t); err != nil {
-		render.Error(w, http.StatusInternalServerError, "internal error")
-		return
+	if err := h.tasks.Create(ctx, t); err != nil {
+		return nil, huma.Error500InternalServerError("internal error")
 	}
-	render.JSON(w, http.StatusCreated, t)
+	return &createdTaskOutput{Status: http.StatusCreated, Body: t}, nil
+}
+
+func projectError(err error) error {
+	if errors.Is(err, repo.ErrNotFound) {
+		return huma.Error404NotFound("not found")
+	}
+	if errors.Is(err, repo.ErrNoAccess) {
+		return huma.Error403Forbidden("forbidden")
+	}
+	return huma.Error500InternalServerError("internal error")
 }
