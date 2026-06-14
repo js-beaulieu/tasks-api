@@ -355,6 +355,39 @@ func TestProjects_Members(t *testing.T) {
 			t.Errorf("member %q not found in ListMembers result", userE.ID)
 		}
 	})
+
+	t.Run("ListMembers includes owner as admin", func(t *testing.T) {
+		members, err := store.Projects.ListMembers(ctx, p.ID)
+		if err != nil {
+			t.Fatalf("ListMembers: %v", err)
+		}
+		ownerMember := findMember(members, owner.ID)
+		if ownerMember == nil {
+			t.Fatalf("owner %q not found in ListMembers result", owner.ID)
+		}
+		if ownerMember.Role != model.RoleAdmin {
+			t.Errorf("owner role = %q, want %q", ownerMember.Role, model.RoleAdmin)
+		}
+	})
+
+	t.Run("ListMembers does not duplicate owner if already an explicit member", func(t *testing.T) {
+		if err := store.Projects.AddMember(ctx, &model.ProjectMember{ProjectID: p.ID, UserID: owner.ID, Role: model.RoleAdmin}); err != nil {
+			t.Fatalf("AddMember owner: %v", err)
+		}
+		members, err := store.Projects.ListMembers(ctx, p.ID)
+		if err != nil {
+			t.Fatalf("ListMembers: %v", err)
+		}
+		count := 0
+		for _, m := range members {
+			if m.UserID == owner.ID {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Errorf("owner appears %d times in members, want 1", count)
+		}
+	})
 }
 
 // ---- Statuses ----
@@ -431,4 +464,13 @@ func TestProjects_Statuses(t *testing.T) {
 			t.Errorf("err = %v, want repo.ErrConflict", err)
 		}
 	})
+}
+
+func findMember(members []*model.ProjectMember, userID string) *model.ProjectMember {
+	for _, m := range members {
+		if m.UserID == userID {
+			return m
+		}
+	}
+	return nil
 }

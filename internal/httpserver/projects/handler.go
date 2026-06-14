@@ -73,6 +73,9 @@ func (h *Handler) list(ctx context.Context, _ *struct{}) (*projectListOutput, er
 	if err != nil {
 		return nil, huma.Error500InternalServerError("internal error")
 	}
+	if list == nil {
+		list = []*model.Project{}
+	}
 	return &projectListOutput{Body: list}, nil
 }
 
@@ -189,6 +192,9 @@ func (h *Handler) listMembers(ctx context.Context, input *projectInput) (*member
 	if err != nil {
 		return nil, huma.Error500InternalServerError("internal error")
 	}
+	if members == nil {
+		members = []*model.ProjectMember{}
+	}
 	return &memberListOutput{Body: members}, nil
 }
 
@@ -301,6 +307,9 @@ func (h *Handler) listStatuses(ctx context.Context, input *projectInput) (*statu
 	if err != nil {
 		return nil, huma.Error500InternalServerError("internal error")
 	}
+	if statuses == nil {
+		statuses = []*model.ProjectStatus{}
+	}
 	return &statusListOutput{Body: statuses}, nil
 }
 
@@ -381,6 +390,9 @@ func (h *Handler) listTasks(ctx context.Context, input *listTasksInput) (*taskLi
 	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("internal error")
+	}
+	if list == nil {
+		list = []*model.Task{}
 	}
 	return &taskListOutput{Body: list}, nil
 }

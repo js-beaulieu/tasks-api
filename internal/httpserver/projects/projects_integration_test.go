@@ -323,6 +323,14 @@ func TestProjectsIntegration_ListMembers(t *testing.T) {
 	if m.Role != model.RoleModify {
 		t.Fatalf("role = %q, want %q", m.Role, model.RoleModify)
 	}
+
+	ownerMember := findMemberByID(members, owner.ID)
+	if ownerMember == nil {
+		t.Fatalf("owner %q not found in members list", owner.ID)
+	}
+	if ownerMember.Role != model.RoleAdmin {
+		t.Errorf("owner role = %q, want %q", ownerMember.Role, model.RoleAdmin)
+	}
 }
 
 func TestProjectsIntegration_AddMember(t *testing.T) {
