@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/lib/pq"
+
 	"github.com/js-beaulieu/tasks-api/internal/logger"
 	"github.com/js-beaulieu/tasks-api/internal/model"
 	"github.com/js-beaulieu/tasks-api/internal/repo"
@@ -94,6 +96,32 @@ func (s *userStore) Delete(ctx context.Context, id string) error {
 	}
 	logger.FromCtx(ctx).Debug("deleted user", "id", id)
 	return nil
+}
+
+func (s *userStore) ListByIDs(ctx context.Context, ids []string) ([]*model.User, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	logger.FromCtx(ctx).Debug("listing users by IDs", "count", len(ids))
+	rows, err := s.db.QueryContext(ctx,
+		bind(`SELECT id, name, email, created_at FROM users WHERE id = ANY(?)`),
+		pq.Array(ids))
+	if err != nil {
+		return nil, fmt.Errorf("query users by IDs: %w", err)
+	}
+	defer rows.Close()
+	var users []*model.User
+	for rows.Next() {
+		var u model.User
+		if err := rows.Scan(&u.ID, &u.Name, &u.Email, &u.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		users = append(users, &u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate users: %w", err)
+	}
+	return users, nil
 }
 
 func scanUser(row *sql.Row) (*model.User, error) {

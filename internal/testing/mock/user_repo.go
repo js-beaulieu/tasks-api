@@ -9,10 +9,12 @@ import (
 // UserRepo is a test double for repo.UserRepo.
 // Set GetByIDFn / CreateFn for per-call control; fall back to User/Err when nil.
 type UserRepo struct {
-	User      *model.User
-	Err       error
-	GetByIDFn func(ctx context.Context, id string) (*model.User, error)
-	CreateFn  func(ctx context.Context, id, name, email string) (*model.User, error)
+	User        *model.User
+	Users       []*model.User
+	Err         error
+	GetByIDFn   func(ctx context.Context, id string) (*model.User, error)
+	ListByIDsFn func(ctx context.Context, ids []string) ([]*model.User, error)
+	CreateFn    func(ctx context.Context, id, name, email string) (*model.User, error)
 }
 
 func (m *UserRepo) GetByID(ctx context.Context, id string) (*model.User, error) {
@@ -20,6 +22,13 @@ func (m *UserRepo) GetByID(ctx context.Context, id string) (*model.User, error) 
 		return m.GetByIDFn(ctx, id)
 	}
 	return m.User, m.Err
+}
+
+func (m *UserRepo) ListByIDs(ctx context.Context, ids []string) ([]*model.User, error) {
+	if m.ListByIDsFn != nil {
+		return m.ListByIDsFn(ctx, ids)
+	}
+	return m.Users, m.Err
 }
 
 func (m *UserRepo) Create(ctx context.Context, id, name, email string) (*model.User, error) {

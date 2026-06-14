@@ -13,6 +13,7 @@ var ErrConflict = errors.New("conflict")
 
 type UserRepo interface {
 	GetByID(ctx context.Context, id string) (*model.User, error)
+	ListByIDs(ctx context.Context, ids []string) ([]*model.User, error)
 	Create(ctx context.Context, id, name, email string) (*model.User, error)
 	Update(ctx context.Context, u *model.User) error
 	Delete(ctx context.Context, id string) error
