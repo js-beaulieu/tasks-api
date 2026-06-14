@@ -17,14 +17,15 @@ import (
 )
 
 func New(store *postgres.Store, cfg config.Config) http.Handler {
-	_ = cfg
-
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler)
 
 	apiConfig := huma.DefaultConfig("tasks-api", "1.0.0")
 	apiConfig.OpenAPIPath = "/openapi"
 	apiConfig.DocsPath = "/docs"
+	if cfg.OpenAPIServerURL != "" {
+		apiConfig.Servers = []*huma.Server{{URL: cfg.OpenAPIServerURL}}
+	}
 	api := humago.New(mux, apiConfig)
 
 	protected := huma.NewGroup(api)

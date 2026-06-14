@@ -20,4 +20,4 @@ go run .
 
 Auth for protected routes uses `X-User-ID`.
 
-Generated REST API docs are exposed at `/docs`, with OpenAPI available at `/openapi.json` and `/openapi.yaml`.
+Generated REST API docs are exposed at `/docs`, with OpenAPI available at `/openapi.json` and `/openapi.yaml`. Set `OPENAPI_SERVER_URL` when the API is mounted behind a path prefix, for example `/tasks`.
