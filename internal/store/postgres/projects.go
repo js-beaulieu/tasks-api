@@ -80,7 +80,7 @@ func (s *projectStore) Create(ctx context.Context, p *model.Project, additionalS
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer func() { _ = tx.Rollback() }()
 
 	_, err = tx.ExecContext(ctx, bind(`
 		INSERT INTO projects (id, name, description, due_date, owner_id, assignee_id)
@@ -298,7 +298,7 @@ func (s *projectStore) RemoveMember(ctx context.Context, projectID, userID strin
 	if err != nil {
 		return 0, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer func() { _ = tx.Rollback() }()
 
 	var ownerID string
 	if err := tx.QueryRowContext(ctx,
@@ -365,7 +365,7 @@ func (s *projectStore) AddStatus(ctx context.Context, projectID, status string) 
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer func() { _ = tx.Rollback() }()
 
 	if err := lockProjectStatuses(ctx, tx, projectID); err != nil {
 		return err
@@ -406,7 +406,7 @@ func (s *projectStore) DeleteStatus(ctx context.Context, projectID, status strin
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer func() { _ = tx.Rollback() }()
 
 	if err := lockProjectStatuses(ctx, tx, projectID); err != nil {
 		return err
