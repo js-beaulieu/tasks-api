@@ -208,7 +208,8 @@ func (s *projectStore) GetMemberRole(ctx context.Context, projectID, userID stri
 	return role, nil
 }
 
-// ListMembers returns all explicit members of a project.
+// ListMembers returns all members of a project, including the project owner
+// as a synthetic admin member if not already present in the explicit member list.
 func (s *projectStore) ListMembers(ctx context.Context, projectID string) ([]*model.ProjectMember, error) {
 	logger.FromCtx(ctx).Debug("listing members", "project_id", projectID)
 	rows, err := s.db.QueryContext(ctx,
@@ -228,8 +229,34 @@ func (s *projectStore) ListMembers(ctx context.Context, projectID string) ([]*mo
 		}
 		members = append(members, &m)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list members: %w", err)
+	}
+
+	var ownerID string
+	if err := s.db.QueryRowContext(ctx,
+		bind(`SELECT owner_id FROM projects WHERE id = ?`), projectID,
+	).Scan(&ownerID); err != nil {
+		return nil, fmt.Errorf("get project owner: %w", err)
+	}
+
+	ownerPresent := false
+	for _, m := range members {
+		if m.UserID == ownerID {
+			ownerPresent = true
+			break
+		}
+	}
+	if !ownerPresent {
+		members = append(members, &model.ProjectMember{
+			ProjectID: projectID,
+			UserID:    ownerID,
+			Role:      model.RoleAdmin,
+		})
+	}
+
 	logger.FromCtx(ctx).Debug("listed members", "project_id", projectID, "count", len(members))
-	return members, rows.Err()
+	return members, nil
 }
 
 // AddMember adds a user to a project. Returns repo.ErrConflict on duplicate.
