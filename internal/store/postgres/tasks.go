@@ -103,7 +103,7 @@ func (s *taskStore) Create(ctx context.Context, t *model.Task) error {
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer func() { _ = tx.Rollback() }()
 
 	// Validate status
 	if err := validateStatus(ctx, tx, t.ProjectID, t.Status); err != nil {
@@ -154,7 +154,7 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer func() { _ = tx.Rollback() }()
 
 	// Load current state
 	var cur model.Task
@@ -250,7 +250,7 @@ func (s *taskStore) CompleteTask(ctx context.Context, id, doneStatus string) (*m
 	if err != nil {
 		return nil, nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer func() { _ = tx.Rollback() }()
 
 	// Load the task to get recurrence, due_date, project_id, etc.
 	rows, err := tx.QueryContext(ctx,

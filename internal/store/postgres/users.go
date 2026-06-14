@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/lib/pq"
 
@@ -124,6 +125,37 @@ func (s *userStore) ListByIDs(ctx context.Context, ids []string) ([]*model.User,
 	return users, nil
 }
 
+func (s *userStore) Search(ctx context.Context, query string, limit int) ([]*model.User, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	logger.FromCtx(ctx).Debug("searching users", "query", query, "limit", limit)
+	escaped := escapeLike(query)
+	pattern := "%" + escaped + "%"
+	rows, err := s.db.QueryContext(ctx,
+		bind(`SELECT id, name, email, created_at FROM users
+		      WHERE name ILIKE ? OR email ILIKE ?
+		      ORDER BY name LIMIT ?`),
+		pattern, pattern, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("search users: %w", err)
+	}
+	defer rows.Close()
+	var users []*model.User
+	for rows.Next() {
+		var u model.User
+		if err := rows.Scan(&u.ID, &u.Name, &u.Email, &u.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		users = append(users, &u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate users: %w", err)
+	}
+	return users, nil
+}
+
 func scanUser(row *sql.Row) (*model.User, error) {
 	var u model.User
 	err := row.Scan(&u.ID, &u.Name, &u.Email, &u.CreatedAt)
@@ -134,4 +166,11 @@ func scanUser(row *sql.Row) (*model.User, error) {
 		return nil, fmt.Errorf("scan user: %w", err)
 	}
 	return &u, nil
+}
+
+func escapeLike(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `%`, `\%`)
+	s = strings.ReplaceAll(s, `_`, `\_`)
+	return s
 }

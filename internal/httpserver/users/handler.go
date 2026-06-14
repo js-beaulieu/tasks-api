@@ -36,6 +36,7 @@ func rootPath(prefix string) string {
 type listUsersInput struct {
 	Ids    []string `query:"ids,explode"`
 	Search string   `query:"search"`
+	Limit  int      `query:"limit"`
 }
 
 type userListOutput struct {
@@ -45,6 +46,16 @@ type userListOutput struct {
 func (h *Handler) list(ctx context.Context, input *listUsersInput) (*userListOutput, error) {
 	if len(input.Ids) > 0 && input.Search != "" {
 		return nil, huma.Error422UnprocessableEntity("ids and search are mutually exclusive")
+	}
+	if input.Search != "" {
+		users, err := h.users.Search(ctx, input.Search, input.Limit)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("internal error")
+		}
+		if users == nil {
+			users = []*model.User{}
+		}
+		return &userListOutput{Body: users}, nil
 	}
 	if len(input.Ids) == 0 {
 		return nil, huma.Error422UnprocessableEntity("ids is required")

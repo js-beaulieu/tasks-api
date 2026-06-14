@@ -507,12 +507,21 @@ func TestUpdateMember(t *testing.T) {
 }
 
 func TestRemoveMember(t *testing.T) {
-	t.Run("DELETE /{id}/members/{userID} success returns 204", func(t *testing.T) {
+	t.Run("DELETE /{id}/members/{userID} success returns 200", func(t *testing.T) {
 		pr := projectRepoWithAccess(model.RoleAdmin)
-		pr.RemoveMemberFn = func(_ context.Context, _, _ string) error { return nil }
+		pr.RemoveMemberFn = func(_ context.Context, _, _ string) (int, error) { return 0, nil }
 		w := serve(newHandler(pr, &mock.TaskRepo{}), defaultUserRepo(), newRequest(http.MethodDelete, "/proj-1/members/user-2", nil))
-		if w.Code != http.StatusNoContent {
-			t.Fatalf("status = %d, want 204", w.Code)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		var got struct {
+			Reassigned int `json:"reassigned"`
+		}
+		if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if got.Reassigned != 0 {
+			t.Errorf("reassigned = %d, want 0", got.Reassigned)
 		}
 	})
 
@@ -526,10 +535,28 @@ func TestRemoveMember(t *testing.T) {
 
 	t.Run("DELETE /{id}/members/{userID} repo error returns 500", func(t *testing.T) {
 		pr := projectRepoWithAccess(model.RoleAdmin)
-		pr.RemoveMemberFn = func(_ context.Context, _, _ string) error { return errors.New("db error") }
+		pr.RemoveMemberFn = func(_ context.Context, _, _ string) (int, error) { return 0, errors.New("db error") }
 		w := serve(newHandler(pr, &mock.TaskRepo{}), defaultUserRepo(), newRequest(http.MethodDelete, "/proj-1/members/user-2", nil))
 		if w.Code != http.StatusInternalServerError {
 			t.Fatalf("status = %d, want 500", w.Code)
+		}
+	})
+
+	t.Run("DELETE /{id}/members/{userID} returns reassigned count", func(t *testing.T) {
+		pr := projectRepoWithAccess(model.RoleAdmin)
+		pr.RemoveMemberFn = func(_ context.Context, _, _ string) (int, error) { return 3, nil }
+		w := serve(newHandler(pr, &mock.TaskRepo{}), defaultUserRepo(), newRequest(http.MethodDelete, "/proj-1/members/user-2", nil))
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		var got struct {
+			Reassigned int `json:"reassigned"`
+		}
+		if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if got.Reassigned != 3 {
+			t.Errorf("reassigned = %d, want 3", got.Reassigned)
 		}
 	})
 }

@@ -250,3 +250,92 @@ func TestListUsers_NoMatchesReturnsEmptyArray(t *testing.T) {
 		t.Fatalf("len = %d, want 0", len(got))
 	}
 }
+
+func TestListUsers_SearchByName(t *testing.T) {
+	env := httptestutil.NewEnv(t)
+
+	seed.User(t, env.Store, seed.UserInput{ID: "u-search-1", Name: "Bob Builder", Email: "bob-builder@example.com"})
+	seed.User(t, env.Store, seed.UserInput{ID: "u-search-2", Name: "Bobby Fischer", Email: "bobby@example.com"})
+	seed.User(t, env.Store, seed.UserInput{ID: "u-search-3", Name: "Carol", Email: "carol@example.com"})
+
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{
+		Method: http.MethodGet,
+		Path:   "/users?search=bob",
+		UserID: env.User.ID,
+	})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
+
+	var got []*model.User
+	httptestutil.Decode(t, res, &got)
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2", len(got))
+	}
+	for _, u := range got {
+		if u.ID == "u-search-3" {
+			t.Errorf("Carol should not appear in search results for 'bob'")
+		}
+	}
+}
+
+func TestListUsers_SearchByEmail(t *testing.T) {
+	env := httptestutil.NewEnv(t)
+
+	seed.User(t, env.Store, seed.UserInput{ID: "u-search-4", Name: "Dave", Email: "dave-special@example.com"})
+	seed.User(t, env.Store, seed.UserInput{ID: "u-search-5", Name: "Eve", Email: "eve@example.com"})
+
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{
+		Method: http.MethodGet,
+		Path:   "/users?search=special",
+		UserID: env.User.ID,
+	})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
+
+	var got []*model.User
+	httptestutil.Decode(t, res, &got)
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1", len(got))
+	}
+	if got[0].ID != "u-search-4" {
+		t.Errorf("ID = %q, want %q", got[0].ID, "u-search-4")
+	}
+}
+
+func TestListUsers_SearchRespectsLimit(t *testing.T) {
+	env := httptestutil.NewEnv(t)
+
+	seed.User(t, env.Store, seed.UserInput{ID: "u-search-6", Name: "Limit Alice", Email: "limit-alice@example.com"})
+	seed.User(t, env.Store, seed.UserInput{ID: "u-search-7", Name: "Limit Bob", Email: "limit-bob@example.com"})
+	seed.User(t, env.Store, seed.UserInput{ID: "u-search-8", Name: "Limit Carol", Email: "limit-carol@example.com"})
+
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{
+		Method: http.MethodGet,
+		Path:   "/users?search=limit&limit=2",
+		UserID: env.User.ID,
+	})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
+
+	var got []*model.User
+	httptestutil.Decode(t, res, &got)
+	if len(got) > 2 {
+		t.Fatalf("len = %d, want <= 2", len(got))
+	}
+}
+
+func TestListUsers_SearchAndIdsMutuallyExclusive(t *testing.T) {
+	env := httptestutil.NewEnv(t)
+
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{
+		Method: http.MethodGet,
+		Path:   "/users?search=bob&ids=u1",
+		UserID: env.User.ID,
+	})
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusUnprocessableEntity)
+	}
+}

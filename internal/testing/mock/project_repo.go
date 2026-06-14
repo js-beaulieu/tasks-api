@@ -18,7 +18,7 @@ type ProjectRepo struct {
 	ListMembersFn      func(ctx context.Context, projectID string) ([]*model.ProjectMember, error)
 	AddMemberFn        func(ctx context.Context, m *model.ProjectMember) error
 	UpdateMemberRoleFn func(ctx context.Context, projectID, userID, role string) error
-	RemoveMemberFn     func(ctx context.Context, projectID, userID string) error
+	RemoveMemberFn     func(ctx context.Context, projectID, userID string) (int, error)
 	ListStatusesFn     func(ctx context.Context, projectID string) ([]*model.ProjectStatus, error)
 	AddStatusFn        func(ctx context.Context, projectID, status string) error
 	DeleteStatusFn     func(ctx context.Context, projectID, status string) error
@@ -60,7 +60,7 @@ func (m *ProjectRepo) UpdateMemberRole(ctx context.Context, projectID, userID, r
 	return m.UpdateMemberRoleFn(ctx, projectID, userID, role)
 }
 
-func (m *ProjectRepo) RemoveMember(ctx context.Context, projectID, userID string) error {
+func (m *ProjectRepo) RemoveMember(ctx context.Context, projectID, userID string) (int, error) {
 	return m.RemoveMemberFn(ctx, projectID, userID)
 }
 
