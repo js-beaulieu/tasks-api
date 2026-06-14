@@ -313,10 +313,14 @@ func TestProjects_Members(t *testing.T) {
 		if err := store.Projects.AddMember(ctx, &model.ProjectMember{ProjectID: p.ID, UserID: userC.ID, Role: model.RoleRead}); err != nil {
 			t.Fatalf("AddMember: %v", err)
 		}
-		if err := store.Projects.RemoveMember(ctx, p.ID, userC.ID); err != nil {
+		reassigned, err := store.Projects.RemoveMember(ctx, p.ID, userC.ID)
+		if err != nil {
 			t.Fatalf("RemoveMember: %v", err)
 		}
-		_, err := store.Projects.GetMemberRole(ctx, p.ID, userC.ID)
+		if reassigned != 0 {
+			t.Errorf("reassigned = %d, want 0", reassigned)
+		}
+		_, err = store.Projects.GetMemberRole(ctx, p.ID, userC.ID)
 		if err != repo.ErrNoAccess {
 			t.Errorf("err = %v, want repo.ErrNoAccess after RemoveMember", err)
 		}
@@ -386,6 +390,47 @@ func TestProjects_Members(t *testing.T) {
 		}
 		if count != 1 {
 			t.Errorf("owner appears %d times in members, want 1", count)
+		}
+	})
+
+	t.Run("RemoveMember reassigns tasks to owner", func(t *testing.T) {
+		memberUser := seed.User(t, store, seed.UserInput{ID: "u-reassign-1", Name: "Reassign Member", Email: "reassign1@test.com"})
+		if err := store.Projects.AddMember(ctx, &model.ProjectMember{ProjectID: p.ID, UserID: memberUser.ID, Role: model.RoleModify}); err != nil {
+			t.Fatalf("AddMember: %v", err)
+		}
+
+		assignedTask := seed.Task(t, store, seed.TaskInput{
+			ProjectID:  p.ID,
+			Name:       "Assigned Task",
+			OwnerID:    owner.ID,
+			AssigneeID: &memberUser.ID,
+		})
+		seed.Task(t, store, seed.TaskInput{
+			ProjectID:  p.ID,
+			Name:       "Another Assigned Task",
+			OwnerID:    owner.ID,
+			AssigneeID: &memberUser.ID,
+		})
+		seed.Task(t, store, seed.TaskInput{
+			ProjectID: p.ID,
+			Name:      "Unassigned Task",
+			OwnerID:   owner.ID,
+		})
+
+		reassigned, err := store.Projects.RemoveMember(ctx, p.ID, memberUser.ID)
+		if err != nil {
+			t.Fatalf("RemoveMember: %v", err)
+		}
+		if reassigned != 2 {
+			t.Errorf("reassigned = %d, want 2", reassigned)
+		}
+
+		updated, err := store.Tasks.Get(ctx, assignedTask.ID)
+		if err != nil {
+			t.Fatalf("Get task: %v", err)
+		}
+		if updated.AssigneeID == nil || *updated.AssigneeID != owner.ID {
+			t.Errorf("AssigneeID = %v, want %q", updated.AssigneeID, owner.ID)
 		}
 	})
 }

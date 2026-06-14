@@ -469,7 +469,16 @@ func TestProjectsIntegration_RemoveMember(t *testing.T) {
 
 	t.Run("owner removes member", func(t *testing.T) {
 		res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodDelete, Path: memberPath(p.ID, member.ID), Body: nil, UserID: owner.ID})
-		assertNoContent(t, res)
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+		}
+		var got struct {
+			Reassigned int `json:"reassigned"`
+		}
+		httptestutil.Decode(t, res, &got)
+		if got.Reassigned != 0 {
+			t.Errorf("reassigned = %d, want 0", got.Reassigned)
+		}
 	})
 
 	t.Run("reject owner removal", func(t *testing.T) {
@@ -487,6 +496,28 @@ func TestProjectsIntegration_RemoveMember(t *testing.T) {
 		res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodDelete, Path: memberPath(p2.ID, m2.ID), Body: nil, UserID: outsider.ID})
 		if res.StatusCode != http.StatusForbidden {
 			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusForbidden)
+		}
+	})
+
+	t.Run("removal reassigns tasks to owner", func(t *testing.T) {
+		p3 := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: owner.ID})
+		m3 := createUser(t, env, "u-reassign", "ReassignMember")
+		addMember(t, env, p3.ID, m3.ID, model.RoleModify)
+
+		seed.Task(t, env.Store, seed.TaskInput{ProjectID: p3.ID, Name: "Assigned 1", OwnerID: owner.ID, AssigneeID: &m3.ID})
+		seed.Task(t, env.Store, seed.TaskInput{ProjectID: p3.ID, Name: "Assigned 2", OwnerID: owner.ID, AssigneeID: &m3.ID})
+		seed.Task(t, env.Store, seed.TaskInput{ProjectID: p3.ID, Name: "Unassigned", OwnerID: owner.ID})
+
+		res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodDelete, Path: memberPath(p3.ID, m3.ID), Body: nil, UserID: owner.ID})
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+		}
+		var got struct {
+			Reassigned int `json:"reassigned"`
+		}
+		httptestutil.Decode(t, res, &got)
+		if got.Reassigned != 2 {
+			t.Errorf("reassigned = %d, want 2", got.Reassigned)
 		}
 	})
 }

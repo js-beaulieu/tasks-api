@@ -14,6 +14,7 @@ var ErrConflict = errors.New("conflict")
 type UserRepo interface {
 	GetByID(ctx context.Context, id string) (*model.User, error)
 	ListByIDs(ctx context.Context, ids []string) ([]*model.User, error)
+	Search(ctx context.Context, query string, limit int) ([]*model.User, error)
 	Create(ctx context.Context, id, name, email string) (*model.User, error)
 	Update(ctx context.Context, u *model.User) error
 	Delete(ctx context.Context, id string) error
@@ -29,7 +30,7 @@ type ProjectRepo interface {
 	ListMembers(ctx context.Context, projectID string) ([]*model.ProjectMember, error)
 	AddMember(ctx context.Context, m *model.ProjectMember) error
 	UpdateMemberRole(ctx context.Context, projectID, userID, role string) error
-	RemoveMember(ctx context.Context, projectID, userID string) error
+	RemoveMember(ctx context.Context, projectID, userID string) (int, error)
 	ListStatuses(ctx context.Context, projectID string) ([]*model.ProjectStatus, error)
 	AddStatus(ctx context.Context, projectID, status string) error
 	DeleteStatus(ctx context.Context, projectID, status string) error

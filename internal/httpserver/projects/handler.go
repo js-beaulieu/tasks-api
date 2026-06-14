@@ -277,7 +277,13 @@ type removeMemberInput struct {
 	UserID    string `path:"userID"`
 }
 
-func (h *Handler) removeMember(ctx context.Context, input *removeMemberInput) (*struct{}, error) {
+type removeMemberOutput struct {
+	Body struct {
+		Reassigned int `json:"reassigned"`
+	}
+}
+
+func (h *Handler) removeMember(ctx context.Context, input *removeMemberInput) (*removeMemberOutput, error) {
 	p, role, err := h.loadProject(ctx, input.ProjectID)
 	if err != nil {
 		return nil, projectError(err)
@@ -288,10 +294,13 @@ func (h *Handler) removeMember(ctx context.Context, input *removeMemberInput) (*
 	if input.UserID == p.OwnerID {
 		return nil, huma.Error422UnprocessableEntity("cannot remove project owner")
 	}
-	if err := h.projects.RemoveMember(ctx, p.ID, input.UserID); err != nil {
+	reassigned, err := h.projects.RemoveMember(ctx, p.ID, input.UserID)
+	if err != nil {
 		return nil, huma.Error500InternalServerError("internal error")
 	}
-	return nil, nil
+	out := &removeMemberOutput{}
+	out.Body.Reassigned = reassigned
+	return out, nil
 }
 
 type statusListOutput struct {

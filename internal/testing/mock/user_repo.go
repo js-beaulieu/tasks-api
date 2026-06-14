@@ -14,6 +14,7 @@ type UserRepo struct {
 	Err         error
 	GetByIDFn   func(ctx context.Context, id string) (*model.User, error)
 	ListByIDsFn func(ctx context.Context, ids []string) ([]*model.User, error)
+	SearchFn    func(ctx context.Context, query string, limit int) ([]*model.User, error)
 	CreateFn    func(ctx context.Context, id, name, email string) (*model.User, error)
 }
 
@@ -27,6 +28,13 @@ func (m *UserRepo) GetByID(ctx context.Context, id string) (*model.User, error) 
 func (m *UserRepo) ListByIDs(ctx context.Context, ids []string) ([]*model.User, error) {
 	if m.ListByIDsFn != nil {
 		return m.ListByIDsFn(ctx, ids)
+	}
+	return m.Users, m.Err
+}
+
+func (m *UserRepo) Search(ctx context.Context, query string, limit int) ([]*model.User, error) {
+	if m.SearchFn != nil {
+		return m.SearchFn(ctx, query, limit)
 	}
 	return m.Users, m.Err
 }

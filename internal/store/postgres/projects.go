@@ -291,17 +291,46 @@ func (s *projectStore) UpdateMemberRole(ctx context.Context, projectID, userID, 
 }
 
 // RemoveMember removes a user from a project.
-func (s *projectStore) RemoveMember(ctx context.Context, projectID, userID string) error {
+func (s *projectStore) RemoveMember(ctx context.Context, projectID, userID string) (int, error) {
 	logger.FromCtx(ctx).Debug("removing member", "project_id", projectID, "user_id", userID)
-	_, err := s.db.ExecContext(ctx,
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	var ownerID string
+	if err := tx.QueryRowContext(ctx,
+		bind(`SELECT owner_id FROM projects WHERE id = ?`), projectID,
+	).Scan(&ownerID); err != nil {
+		return 0, fmt.Errorf("get project owner: %w", err)
+	}
+
+	res, err := tx.ExecContext(ctx,
+		bind(`UPDATE tasks SET assignee_id = ?, updated_at = NOW()
+		      WHERE project_id = ? AND assignee_id = ?`),
+		ownerID, projectID, userID,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("reassign tasks: %w", err)
+	}
+	reassigned, _ := res.RowsAffected()
+
+	_, err = tx.ExecContext(ctx,
 		bind(`DELETE FROM project_members WHERE project_id = ? AND user_id = ?`),
 		projectID, userID,
 	)
 	if err != nil {
-		return fmt.Errorf("remove member: %w", err)
+		return 0, fmt.Errorf("remove member: %w", err)
 	}
-	logger.FromCtx(ctx).Debug("removed member", "project_id", projectID, "user_id", userID)
-	return nil
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit: %w", err)
+	}
+
+	logger.FromCtx(ctx).Debug("removed member", "project_id", projectID, "user_id", userID, "reassigned", reassigned)
+	return int(reassigned), nil
 }
 
 // ListStatuses returns project statuses ordered by position.

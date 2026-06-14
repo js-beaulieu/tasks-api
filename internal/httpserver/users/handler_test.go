@@ -1,7 +1,9 @@
 package users_test
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -91,6 +93,102 @@ func TestGetUserByID(t *testing.T) {
 		}
 	})
 
+}
+
+func TestSearchUsers(t *testing.T) {
+	t.Run("search returns matching users", func(t *testing.T) {
+		users := []*model.User{
+			{ID: "user-2", Name: "Bob", Email: "bob@example.com"},
+			{ID: "user-3", Name: "Carol", Email: "carol@example.com"},
+		}
+		m := &mock.UserRepo{
+			User:  &model.User{ID: "user-1", Name: "Alice", Email: "alice@example.com"},
+			Users: users,
+			SearchFn: func(_ context.Context, query string, limit int) ([]*model.User, error) {
+				if query != "bob" {
+					t.Errorf("query = %q, want %q", query, "bob")
+				}
+				return users, nil
+			},
+		}
+		handler := authed(m, newHandler(m))
+
+		req := httptest.NewRequest(http.MethodGet, "/?search=bob", nil)
+		req.Header.Set("X-User-ID", "user-1")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		var got []*model.User
+		if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(got) != 2 {
+			t.Errorf("len = %d, want 2", len(got))
+		}
+	})
+
+	t.Run("search with ids returns 422", func(t *testing.T) {
+		m := &mock.UserRepo{User: &model.User{ID: "user-1", Name: "Alice", Email: "alice@example.com"}}
+		handler := authed(m, newHandler(m))
+
+		req := httptest.NewRequest(http.MethodGet, "/?search=bob&ids=user-2", nil)
+		req.Header.Set("X-User-ID", "user-1")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422", w.Code)
+		}
+	})
+
+	t.Run("search with no results returns empty array", func(t *testing.T) {
+		m := &mock.UserRepo{
+			User:  &model.User{ID: "user-1", Name: "Alice", Email: "alice@example.com"},
+			Users: nil,
+			SearchFn: func(_ context.Context, _ string, _ int) ([]*model.User, error) {
+				return nil, nil
+			},
+		}
+		handler := authed(m, newHandler(m))
+
+		req := httptest.NewRequest(http.MethodGet, "/?search=nobody", nil)
+		req.Header.Set("X-User-ID", "user-1")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		var got []*model.User
+		if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(got) != 0 {
+			t.Errorf("len = %d, want 0", len(got))
+		}
+	})
+
+	t.Run("search repo error returns 500", func(t *testing.T) {
+		m := &mock.UserRepo{
+			User: &model.User{ID: "user-1", Name: "Alice", Email: "alice@example.com"},
+			SearchFn: func(_ context.Context, _ string, _ int) ([]*model.User, error) {
+				return nil, errors.New("db error")
+			},
+		}
+		handler := authed(m, newHandler(m))
+
+		req := httptest.NewRequest(http.MethodGet, "/?search=bob", nil)
+		req.Header.Set("X-User-ID", "user-1")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want 500", w.Code)
+		}
+	})
 }
 
 func TestUpdateMe(t *testing.T) {
