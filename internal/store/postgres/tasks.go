@@ -223,10 +223,12 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 		setClauses = append(setClauses, "assignee_id = ?")
 		args = append(args, *t.AssigneeID)
 	}
+	var sqlRecurrence interface{}
 	if t.Recurrence != nil {
-		setClauses = append(setClauses, "recurrence = ?")
-		args = append(args, *t.Recurrence)
+		sqlRecurrence = *t.Recurrence
 	}
+	setClauses = append(setClauses, "recurrence = ?")
+	args = append(args, sqlRecurrence)
 
 	args = append(args, t.ID)
 	query := "UPDATE tasks SET " + strings.Join(setClauses, ", ") + " WHERE id = ?"

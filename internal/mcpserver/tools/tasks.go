@@ -7,8 +7,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/js-beaulieu/tasks-api/internal/httpserver/humautil"
 	"github.com/js-beaulieu/tasks-api/internal/httpserver/middleware"
-	"github.com/js-beaulieu/tasks-api/internal/httpserver/projects"
 	"github.com/js-beaulieu/tasks-api/internal/model"
 	"github.com/js-beaulieu/tasks-api/internal/repo"
 )
@@ -111,7 +111,7 @@ func CreateTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo) mcp.T
 		}
 		userID := middleware.UserFromCtx(ctx).ID
 		role, err := projectsRepo.GetMemberRole(ctx, in.ProjectID, userID)
-		if err != nil || !projects.RequireRole(model.RoleModify, role) {
+		if err != nil || !humautil.RequireRole(model.RoleModify, role) {
 			return nil, nil, errors.New("no access")
 		}
 		status := in.Status
@@ -172,12 +172,12 @@ func UpdateTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo, tagsR
 			return nil, nil, err
 		}
 		role, err := projectsRepo.GetMemberRole(ctx, t.ProjectID, userID)
-		if err != nil || !projects.RequireRole(model.RoleModify, role) {
+		if err != nil || !humautil.RequireRole(model.RoleModify, role) {
 			return nil, nil, errors.New("no access")
 		}
 		if in.ProjectID != nil && *in.ProjectID != t.ProjectID {
 			targetRole, err := projectsRepo.GetMemberRole(ctx, *in.ProjectID, userID)
-			if err != nil || !projects.RequireRole(model.RoleModify, targetRole) {
+			if err != nil || !humautil.RequireRole(model.RoleModify, targetRole) {
 				return nil, nil, errors.New("no access to target project")
 			}
 		}
@@ -251,7 +251,7 @@ func CompleteTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo) mcp
 			return nil, nil, err
 		}
 		role, err := projectsRepo.GetMemberRole(ctx, task.ProjectID, userID)
-		if err != nil || !projects.RequireRole(model.RoleModify, role) {
+		if err != nil || !humautil.RequireRole(model.RoleModify, role) {
 			return nil, nil, errors.New("no access")
 		}
 		completed, next, err := tasks.CompleteTask(ctx, in.TaskID, in.DoneStatus)
@@ -287,7 +287,7 @@ func DeleteTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo) mcp.T
 		if err != nil {
 			return nil, nil, err
 		}
-		if !projects.RequireRole(model.RoleModify, role) {
+		if !humautil.RequireRole(model.RoleModify, role) {
 			return nil, nil, errors.New("modify role required to delete a task")
 		}
 		if err := tasks.Delete(ctx, in.TaskID); err != nil {

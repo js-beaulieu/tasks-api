@@ -10,20 +10,11 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 
+	"github.com/js-beaulieu/tasks-api/internal/httpserver/humautil"
 	"github.com/js-beaulieu/tasks-api/internal/httpserver/middleware"
 	"github.com/js-beaulieu/tasks-api/internal/model"
 	"github.com/js-beaulieu/tasks-api/internal/repo"
 )
-
-var roleRank = map[string]int{
-	model.RoleRead:   1,
-	model.RoleModify: 2,
-	model.RoleAdmin:  3,
-}
-
-func requireRole(min, actual string) bool {
-	return roleRank[actual] >= roleRank[min]
-}
 
 type Handler struct {
 	projects repo.ProjectRepo
@@ -90,7 +81,7 @@ type taskOutput struct {
 func (h *Handler) get(ctx context.Context, input *taskInput) (*taskOutput, error) {
 	t, _, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, taskError(err)
+		return nil, humautil.RepoError(err)
 	}
 	return &taskOutput{Body: t}, nil
 }
@@ -98,6 +89,16 @@ func (h *Handler) get(ctx context.Context, input *taskInput) (*taskOutput, error
 type nullable[T any] struct {
 	Value *T
 	Set   bool
+}
+
+func (nullable[T]) TransformSchema(r huma.Registry, s *huma.Schema) *huma.Schema {
+	s.Type = "string"
+	s.Nullable = true
+	s.Properties = nil
+	s.Required = nil
+	s.AdditionalProperties = nil
+	s.Ref = ""
+	return s
 }
 
 func (n *nullable[T]) UnmarshalJSON(data []byte) error {
@@ -123,6 +124,7 @@ type updateTaskBody struct {
 	Position    *int             `json:"position,omitempty"`
 	ParentID    nullable[string] `json:"parent_id,omitempty"`
 	ProjectID   *string          `json:"project_id,omitempty"`
+	Recurrence  nullable[string] `json:"recurrence,omitempty"`
 }
 
 type updateTaskInput struct {
@@ -133,15 +135,15 @@ type updateTaskInput struct {
 func (h *Handler) update(ctx context.Context, input *updateTaskInput) (*taskOutput, error) {
 	t, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, taskError(err)
+		return nil, humautil.RepoError(err)
 	}
-	if !requireRole(model.RoleModify, role) {
+	if !humautil.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
 	}
 	if input.Body.ProjectID != nil && *input.Body.ProjectID != t.ProjectID {
 		user := middleware.UserFromCtx(ctx)
 		targetRole, err := h.projects.GetMemberRole(ctx, *input.Body.ProjectID, user.ID)
-		if err != nil || !requireRole(model.RoleModify, targetRole) {
+		if err != nil || !humautil.RequireRole(model.RoleModify, targetRole) {
 			return nil, huma.Error403Forbidden("forbidden")
 		}
 		t.ProjectID = *input.Body.ProjectID
@@ -167,6 +169,12 @@ func (h *Handler) update(ctx context.Context, input *updateTaskInput) (*taskOutp
 	if input.Body.ParentID.Set {
 		t.ParentID = input.Body.ParentID.Value
 	}
+	if input.Body.Recurrence.Set {
+		if err := humautil.ValidateRecurrence(input.Body.Recurrence.Value, t.DueDate); err != nil {
+			return nil, err
+		}
+		t.Recurrence = input.Body.Recurrence.Value
+	}
 	if err := h.tasks.Update(ctx, t); err != nil {
 		if errors.Is(err, repo.ErrConflict) {
 			return nil, huma.Error409Conflict("invalid status")
@@ -179,9 +187,9 @@ func (h *Handler) update(ctx context.Context, input *updateTaskInput) (*taskOutp
 func (h *Handler) delete(ctx context.Context, input *taskInput) (*struct{}, error) {
 	t, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, taskError(err)
+		return nil, humautil.RepoError(err)
 	}
-	if !requireRole(model.RoleModify, role) {
+	if !humautil.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
 	}
 	if err := h.tasks.Delete(ctx, t.ID); err != nil {
@@ -211,9 +219,9 @@ type completeTaskOutput struct {
 func (h *Handler) completeTask(ctx context.Context, input *completeTaskInput) (*completeTaskOutput, error) {
 	t, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, taskError(err)
+		return nil, humautil.RepoError(err)
 	}
-	if !requireRole(model.RoleModify, role) {
+	if !humautil.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
 	}
 	if strings.TrimSpace(input.Body.DoneStatus) == "" {
@@ -236,7 +244,7 @@ type subtaskListOutput struct {
 func (h *Handler) listSubtasks(ctx context.Context, input *taskInput) (*subtaskListOutput, error) {
 	t, _, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, taskError(err)
+		return nil, humautil.RepoError(err)
 	}
 	parentID := t.ID
 	list, err := h.tasks.ListChildren(ctx, t.ProjectID, &parentID, repo.TaskFilter{})
@@ -255,6 +263,7 @@ type createSubtaskBody struct {
 	Status      *string `json:"status,omitempty"`
 	DueDate     *string `json:"due_date,omitempty"`
 	AssigneeID  *string `json:"assignee_id,omitempty"`
+	Recurrence  *string `json:"recurrence,omitempty"`
 }
 
 type createSubtaskInput struct {
@@ -270,13 +279,16 @@ type createdTaskOutput struct {
 func (h *Handler) createSubtask(ctx context.Context, input *createSubtaskInput) (*createdTaskOutput, error) {
 	parent, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, taskError(err)
+		return nil, humautil.RepoError(err)
 	}
-	if !requireRole(model.RoleModify, role) {
+	if !humautil.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
 	}
 	if strings.TrimSpace(input.Body.Name) == "" {
 		return nil, huma.Error422UnprocessableEntity("name is required")
+	}
+	if err := humautil.ValidateRecurrence(input.Body.Recurrence, input.Body.DueDate); err != nil {
+		return nil, err
 	}
 	user := middleware.UserFromCtx(ctx)
 	parentID := parent.ID
@@ -294,6 +306,7 @@ func (h *Handler) createSubtask(ctx context.Context, input *createSubtaskInput) 
 		DueDate:     input.Body.DueDate,
 		OwnerID:     user.ID,
 		AssigneeID:  input.Body.AssigneeID,
+		Recurrence:  input.Body.Recurrence,
 	}
 	if err := h.tasks.Create(ctx, t); err != nil {
 		return nil, huma.Error500InternalServerError("internal error")
@@ -308,7 +321,7 @@ type tagListOutput struct {
 func (h *Handler) listTags(ctx context.Context, input *taskInput) (*tagListOutput, error) {
 	t, _, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, taskError(err)
+		return nil, humautil.RepoError(err)
 	}
 	list, err := h.tags.ListForTask(ctx, t.ID)
 	if err != nil {
@@ -337,9 +350,9 @@ type tagOutput struct {
 func (h *Handler) addTag(ctx context.Context, input *addTagInput) (*tagOutput, error) {
 	t, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, taskError(err)
+		return nil, humautil.RepoError(err)
 	}
-	if !requireRole(model.RoleModify, role) {
+	if !humautil.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
 	}
 	if strings.TrimSpace(input.Body.Tag) == "" {
@@ -359,23 +372,13 @@ type deleteTagInput struct {
 func (h *Handler) deleteTag(ctx context.Context, input *deleteTagInput) (*struct{}, error) {
 	t, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, taskError(err)
+		return nil, humautil.RepoError(err)
 	}
-	if !requireRole(model.RoleModify, role) {
+	if !humautil.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
 	}
 	if err := h.tags.Delete(ctx, t.ID, input.Tag); err != nil {
 		return nil, huma.Error500InternalServerError("internal error")
 	}
 	return nil, nil
-}
-
-func taskError(err error) error {
-	if errors.Is(err, repo.ErrNotFound) {
-		return huma.Error404NotFound("not found")
-	}
-	if errors.Is(err, repo.ErrNoAccess) {
-		return huma.Error403Forbidden("forbidden")
-	}
-	return huma.Error500InternalServerError("internal error")
 }
