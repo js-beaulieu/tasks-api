@@ -814,3 +814,124 @@ func TestTasksIntegration_DeleteTag_NoAccessForbidden(t *testing.T) {
 		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusForbidden)
 	}
 }
+
+// ── Recurrence editing ─────────────────────────────────────────────────────
+
+func TestTasksIntegration_Patch_SetRecurrence(t *testing.T) {
+	env := httptestutil.NewEnv(t)
+	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
+	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID, DueDate: strPtr("2026-06-01")})
+
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: "/tasks/" + task.ID, Body: map[string]any{
+		"recurrence": "FREQ=DAILY",
+	}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", res.StatusCode, http.StatusOK, res.Body)
+	}
+
+	var got model.Task
+	httptestutil.Decode(t, res, &got)
+	if got.Recurrence == nil || *got.Recurrence != "FREQ=DAILY" {
+		t.Fatalf("recurrence = %v, want FREQ=DAILY", got.Recurrence)
+	}
+}
+
+func TestTasksIntegration_Patch_ClearRecurrence(t *testing.T) {
+	env := httptestutil.NewEnv(t)
+	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
+	ctx := context.Background()
+	due := "2026-06-01"
+	recurrence := "FREQ=WEEKLY"
+	recurring := &model.Task{
+		ProjectID:  project.ID,
+		Name:       "Recurring",
+		Status:     "todo",
+		DueDate:    &due,
+		OwnerID:    env.User.ID,
+		Recurrence: &recurrence,
+	}
+	if err := env.Store.Tasks.Create(ctx, recurring); err != nil {
+		t.Fatalf("seed recurring task: %v", err)
+	}
+
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: "/tasks/" + recurring.ID, Body: map[string]any{
+		"recurrence": nil,
+	}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", res.StatusCode, http.StatusOK, res.Body)
+	}
+
+	var got model.Task
+	httptestutil.Decode(t, res, &got)
+	if got.Recurrence != nil {
+		t.Fatalf("recurrence = %v, want nil", got.Recurrence)
+	}
+
+	fresh, err := env.Store.Tasks.Get(ctx, recurring.ID)
+	if err != nil {
+		t.Fatalf("re-fetch task: %v", err)
+	}
+	if fresh.Recurrence != nil {
+		t.Fatalf("recurrence persisted = %v, want nil", fresh.Recurrence)
+	}
+}
+
+func TestTasksIntegration_Patch_InvalidRecurrence(t *testing.T) {
+	env := httptestutil.NewEnv(t)
+	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
+	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
+
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: "/tasks/" + task.ID, Body: map[string]any{
+		"recurrence": "INVALID",
+	}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusUnprocessableEntity)
+	}
+}
+
+func TestTasksIntegration_Patch_RecurrenceWithoutDueDate(t *testing.T) {
+	env := httptestutil.NewEnv(t)
+	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
+	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
+
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: "/tasks/" + task.ID, Body: map[string]any{
+		"recurrence": "FREQ=DAILY",
+	}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusUnprocessableEntity)
+	}
+}
+
+func TestTasksIntegration_CreateSubtask_WithRecurrence(t *testing.T) {
+	env := httptestutil.NewEnv(t)
+	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
+	parent := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
+
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + parent.ID + "/tasks", Body: map[string]any{
+		"name": "Recurring sub", "recurrence": "FREQ=DAILY", "due_date": "2026-06-01",
+	}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body = %s", res.StatusCode, http.StatusCreated, res.Body)
+	}
+
+	var got model.Task
+	httptestutil.Decode(t, res, &got)
+	if got.Recurrence == nil || *got.Recurrence != "FREQ=DAILY" {
+		t.Fatalf("recurrence = %v, want FREQ=DAILY", got.Recurrence)
+	}
+}
+
+func TestTasksIntegration_CreateSubtask_RecurrenceWithoutDueDate(t *testing.T) {
+	env := httptestutil.NewEnv(t)
+	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
+	parent := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
+
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + parent.ID + "/tasks", Body: map[string]any{
+		"name": "No due", "recurrence": "FREQ=DAILY",
+	}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusUnprocessableEntity)
+	}
+}
+
+func strPtr(s string) *string { return &s }

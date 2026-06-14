@@ -610,3 +610,166 @@ func TestDeleteTagExtra(t *testing.T) {
 		}
 	})
 }
+
+// ── Recurrence ─────────────────────────────────────────────────────────────
+
+func TestPatchTaskRecurrence(t *testing.T) {
+	t.Run(`PATCH with "recurrence": "FREQ=DAILY" sets recurrence`, func(t *testing.T) {
+		var captured *model.Task
+		tr := taskRepoFound()
+		tr.UpdateFn = func(_ context.Context, t *model.Task) error {
+			captured = t
+			return nil
+		}
+		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := serve(handler, rawRequest(http.MethodPatch, "/task-1", `{"recurrence":"FREQ=DAILY","due_date":"2026-05-01"}`))
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body = %s", w.Code, w.Body.String())
+		}
+		if captured == nil {
+			t.Fatal("Update was not called")
+		}
+		if captured.Recurrence == nil || *captured.Recurrence != "FREQ=DAILY" {
+			t.Errorf("Recurrence = %v, want FREQ=DAILY", captured.Recurrence)
+		}
+	})
+
+	t.Run(`PATCH with "recurrence": null clears recurrence`, func(t *testing.T) {
+		var captured *model.Task
+		tr := &mock.TaskRepo{
+			GetFn: func(_ context.Context, _ string) (*model.Task, error) {
+				t := newTestTask()
+				r := "FREQ=WEEKLY"
+				t.Recurrence = &r
+				return t, nil
+			},
+			UpdateFn: func(_ context.Context, t *model.Task) error {
+				captured = t
+				return nil
+			},
+		}
+		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := serve(handler, rawRequest(http.MethodPatch, "/task-1", `{"recurrence": null}`))
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body = %s", w.Code, w.Body.String())
+		}
+		if captured == nil {
+			t.Fatal("Update was not called")
+		}
+		if captured.Recurrence != nil {
+			t.Errorf("Recurrence = %v, want nil", captured.Recurrence)
+		}
+	})
+
+	t.Run("PATCH omitting recurrence leaves it unchanged", func(t *testing.T) {
+		var captured *model.Task
+		r := "FREQ=WEEKLY"
+		tr := &mock.TaskRepo{
+			GetFn: func(_ context.Context, _ string) (*model.Task, error) {
+				t := newTestTask()
+				t.Recurrence = &r
+				return t, nil
+			},
+			UpdateFn: func(_ context.Context, t *model.Task) error {
+				captured = t
+				return nil
+			},
+		}
+		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := serve(handler, newRequest(http.MethodPatch, "/task-1", map[string]any{"name": "Updated"}))
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body = %s", w.Code, w.Body.String())
+		}
+		if captured == nil {
+			t.Fatal("Update was not called")
+		}
+		if captured.Recurrence == nil || *captured.Recurrence != "FREQ=WEEKLY" {
+			t.Errorf("Recurrence = %v, want FREQ=WEEKLY", captured.Recurrence)
+		}
+	})
+
+	t.Run("PATCH with invalid recurrence returns 422", func(t *testing.T) {
+		tr := taskRepoFound()
+		tr.UpdateFn = func(_ context.Context, _ *model.Task) error { return nil }
+		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := serve(handler, rawRequest(http.MethodPatch, "/task-1", `{"recurrence":"BOGUS"}`))
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422", w.Code)
+		}
+	})
+
+	t.Run("PATCH with recurrence but no due_date returns 422", func(t *testing.T) {
+		tr := taskRepoFound()
+		tr.UpdateFn = func(_ context.Context, _ *model.Task) error { return nil }
+		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := serve(handler, rawRequest(http.MethodPatch, "/task-1", `{"recurrence":"FREQ=DAILY"}`))
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422", w.Code)
+		}
+	})
+
+	t.Run("PATCH with recurrence and due_date in same request succeeds", func(t *testing.T) {
+		var captured *model.Task
+		tr := taskRepoFound()
+		tr.UpdateFn = func(_ context.Context, t *model.Task) error {
+			captured = t
+			return nil
+		}
+		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := serve(handler, rawRequest(http.MethodPatch, "/task-1", `{"recurrence":"FREQ=DAILY","due_date":"2026-05-01"}`))
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body = %s", w.Code, w.Body.String())
+		}
+		if captured == nil {
+			t.Fatal("Update was not called")
+		}
+		if captured.Recurrence == nil || *captured.Recurrence != "FREQ=DAILY" {
+			t.Errorf("Recurrence = %v, want FREQ=DAILY", captured.Recurrence)
+		}
+		if captured.DueDate == nil || *captured.DueDate != "2026-05-01" {
+			t.Errorf("DueDate = %v, want 2026-05-01", captured.DueDate)
+		}
+	})
+}
+
+func TestCreateSubtaskRecurrence(t *testing.T) {
+	t.Run("POST /{id}/tasks with recurrence and due_date returns 201", func(t *testing.T) {
+		var captured *model.Task
+		tr := taskRepoFound()
+		tr.CreateFn = func(_ context.Context, t *model.Task) error {
+			captured = t
+			return nil
+		}
+		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := serve(handler, rawRequest(http.MethodPost, "/task-1/tasks", `{"name":"Recurring sub","recurrence":"FREQ=DAILY","due_date":"2026-05-01"}`))
+		if w.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201; body = %s", w.Code, w.Body.String())
+		}
+		if captured == nil {
+			t.Fatal("Create was not called")
+		}
+		if captured.Recurrence == nil || *captured.Recurrence != "FREQ=DAILY" {
+			t.Errorf("Recurrence = %v, want FREQ=DAILY", captured.Recurrence)
+		}
+	})
+
+	t.Run("POST /{id}/tasks with invalid recurrence returns 422", func(t *testing.T) {
+		tr := taskRepoFound()
+		tr.CreateFn = func(_ context.Context, _ *model.Task) error { return nil }
+		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := serve(handler, rawRequest(http.MethodPost, "/task-1/tasks", `{"name":"Bad","recurrence":"INVALID"}`))
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422", w.Code)
+		}
+	})
+
+	t.Run("POST /{id}/tasks with recurrence but no due_date returns 422", func(t *testing.T) {
+		tr := taskRepoFound()
+		tr.CreateFn = func(_ context.Context, _ *model.Task) error { return nil }
+		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := serve(handler, rawRequest(http.MethodPost, "/task-1/tasks", `{"name":"No due","recurrence":"FREQ=DAILY"}`))
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422", w.Code)
+		}
+	})
+}

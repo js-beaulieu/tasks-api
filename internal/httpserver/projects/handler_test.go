@@ -703,4 +703,53 @@ func TestCreateTaskExtra(t *testing.T) {
 			t.Fatalf("status = %d, want 500", w.Code)
 		}
 	})
+
+	t.Run("POST /{id}/tasks with recurrence and due_date returns 201", func(t *testing.T) {
+		pr := projectRepoWithAccess(model.RoleModify)
+		var captured *model.Task
+		tr := &mock.TaskRepo{
+			CreateFn: func(_ context.Context, t *model.Task) error {
+				captured = t
+				return nil
+			},
+		}
+		w := serve(newHandler(pr, tr), defaultUserRepo(), newRequest(http.MethodPost, "/proj-1/tasks", map[string]any{
+			"name": "Recurring task", "recurrence": "FREQ=DAILY", "due_date": "2026-05-01",
+		}))
+		if w.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201; body = %s", w.Code, w.Body.String())
+		}
+		if captured == nil {
+			t.Fatal("Create was not called")
+		}
+		if captured.Recurrence == nil || *captured.Recurrence != "FREQ=DAILY" {
+			t.Errorf("Recurrence = %v, want FREQ=DAILY", captured.Recurrence)
+		}
+	})
+
+	t.Run("POST /{id}/tasks with invalid recurrence returns 422", func(t *testing.T) {
+		pr := projectRepoWithAccess(model.RoleModify)
+		tr := &mock.TaskRepo{
+			CreateFn: func(_ context.Context, _ *model.Task) error { return nil },
+		}
+		w := serve(newHandler(pr, tr), defaultUserRepo(), newRequest(http.MethodPost, "/proj-1/tasks", map[string]any{
+			"name": "Bad recurrence", "recurrence": "INVALID",
+		}))
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422", w.Code)
+		}
+	})
+
+	t.Run("POST /{id}/tasks with recurrence but no due_date returns 422", func(t *testing.T) {
+		pr := projectRepoWithAccess(model.RoleModify)
+		tr := &mock.TaskRepo{
+			CreateFn: func(_ context.Context, _ *model.Task) error { return nil },
+		}
+		w := serve(newHandler(pr, tr), defaultUserRepo(), newRequest(http.MethodPost, "/proj-1/tasks", map[string]any{
+			"name": "No due", "recurrence": "FREQ=DAILY",
+		}))
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422", w.Code)
+		}
+	})
 }
