@@ -44,6 +44,26 @@ func RegisterRoutes(api huma.API, projects repo.ProjectRepo, tasks repo.TaskRepo
 	huma.Get(group, "/{taskID}/tags", h.listTags)
 	huma.Post(group, "/{taskID}/tags", h.addTag)
 	huma.Delete(group, "/{taskID}/tags/{tag}", h.deleteTag)
+
+	schema := api.OpenAPI().Components.Schemas.SchemaFromRef("#/components/schemas/CompleteTaskResp")
+	if schema != nil && schema.Properties != nil && schema.Properties["next"] != nil {
+		taskRef := schema.Properties["next"].Ref
+		if taskRef != "" {
+			schema.Properties["next"] = &huma.Schema{
+				AnyOf: []*huma.Schema{
+					{Ref: taskRef},
+					{Type: "null"},
+				},
+			}
+			var required []string
+			for _, name := range schema.Required {
+				if name != "next" {
+					required = append(required, name)
+				}
+			}
+			schema.Required = required
+		}
+	}
 }
 
 func (h *Handler) loadTask(ctx context.Context, taskID string) (*model.Task, string, error) {
@@ -222,6 +242,9 @@ func (h *Handler) listSubtasks(ctx context.Context, input *taskInput) (*subtaskL
 	list, err := h.tasks.ListChildren(ctx, t.ProjectID, &parentID, repo.TaskFilter{})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("internal error")
+	}
+	if list == nil {
+		list = []*model.Task{}
 	}
 	return &subtaskListOutput{Body: list}, nil
 }

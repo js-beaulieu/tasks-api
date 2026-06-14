@@ -23,6 +23,7 @@ func New(store *postgres.Store, cfg config.Config) http.Handler {
 	apiConfig := huma.DefaultConfig("tasks-api", "1.0.0")
 	apiConfig.OpenAPIPath = "/openapi"
 	apiConfig.DocsPath = "/docs"
+	huma.DefaultArrayNullable = false
 	if cfg.OpenAPIServerURL != "" {
 		apiConfig.Servers = []*huma.Server{{URL: cfg.OpenAPIServerURL}}
 	}
