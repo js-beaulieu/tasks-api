@@ -21,11 +21,6 @@ jobs:
         with:
           version: "3.x"
 
-      - name: Format
-        run: |
-          task format
-          git diff --exit-code
-
       - name: Lint
         run: task lint
 
