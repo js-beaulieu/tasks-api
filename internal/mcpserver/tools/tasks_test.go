@@ -614,6 +614,28 @@ func TestDeleteTaskHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("Delete returns ErrNotFound (race condition)", func(t *testing.T) {
+		tr := &mock.TaskRepo{
+			GetFn: func(_ context.Context, _ string) (*model.Task, error) {
+				return &model.Task{ID: "t1", ProjectID: "p1", Name: "T", Status: "todo", OwnerID: "u1"}, nil
+			},
+			DeleteFn: func(_ context.Context, _ string) error { return repo.ErrNotFound },
+		}
+		pr := &mock.ProjectRepo{
+			GetMemberRoleFn: func(_ context.Context, _, _ string) (string, error) {
+				return model.RoleModify, nil
+			},
+		}
+		handler := DeleteTaskHandler(pr, tr)
+		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, deleteTaskInput{TaskID: "t1"})
+		if err == nil {
+			t.Fatal("expected error for ErrNotFound from Delete")
+		}
+		if !errors.Is(err, repo.ErrNotFound) {
+			t.Errorf("err = %v, want repo.ErrNotFound", err)
+		}
+	})
+
 	t.Run("missing task_id returns error", func(t *testing.T) {
 		handler := DeleteTaskHandler(&mock.ProjectRepo{}, &mock.TaskRepo{})
 		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, deleteTaskInput{})

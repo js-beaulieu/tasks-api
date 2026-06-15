@@ -4,10 +4,12 @@ package postgres_test
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 
 	"github.com/js-beaulieu/tasks-api/internal/model"
 	"github.com/js-beaulieu/tasks-api/internal/repo"
+	"github.com/js-beaulieu/tasks-api/internal/store/postgres"
 	testdb "github.com/js-beaulieu/tasks-api/internal/testing/db"
 	"github.com/js-beaulieu/tasks-api/internal/testing/seed"
 )
@@ -338,6 +340,34 @@ func TestTasks_Delete(t *testing.T) {
 	}
 }
 
+func TestTasks_Delete_CompactsPositions(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+
+	t0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+	t1 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+	t2 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+
+	if err := store.Tasks.Delete(ctx, t1.ID); err != nil {
+		t.Fatalf("Delete middle: %v", err)
+	}
+
+	assertPositions(t, store, proj.ID, nil, map[string]int{
+		t0.ID: 0,
+		t2.ID: 1,
+	})
+}
+
+func TestTasks_Delete_NotFound(t *testing.T) {
+	_, store := testdb.Open(t)
+	err := store.Tasks.Delete(context.Background(), "no-such-id")
+	if err != repo.ErrNotFound {
+		t.Errorf("err = %v, want repo.ErrNotFound", err)
+	}
+}
+
 // ---- Move between parents (same project) ----
 
 func TestTasks_Move_BetweenParents(t *testing.T) {
@@ -631,5 +661,214 @@ func TestTasks_CycleGuard(t *testing.T) {
 		if got.ParentID != nil {
 			t.Errorf("parentID = %v, want nil (unchanged)", got.ParentID)
 		}
+	})
+}
+
+// ---- Position compaction with non-contiguous positions ----
+
+// setPositions is a test helper that directly sets task positions via SQL.
+func setPositions(t *testing.T, db *sql.DB, positions map[string]int) {
+	t.Helper()
+	for id, pos := range positions {
+		if _, err := db.ExecContext(context.Background(),
+			`UPDATE tasks SET position = $1 WHERE id = $2`, pos, id,
+		); err != nil {
+			t.Fatalf("set position for %s: %v", id, err)
+		}
+	}
+}
+
+func assertPositions(t *testing.T, store *postgres.Store, projectID string, parentID *string, expected map[string]int) {
+	t.Helper()
+	tasks, err := store.Tasks.ListChildren(context.Background(), projectID, parentID, repo.TaskFilter{})
+	if err != nil {
+		t.Fatalf("ListChildren: %v", err)
+	}
+	for _, tk := range tasks {
+		want, ok := expected[tk.ID]
+		if !ok {
+			continue
+		}
+		if tk.Position != want {
+			t.Errorf("task %s position = %d, want %d", tk.ID[:8], tk.Position, want)
+		}
+	}
+}
+
+func TestTasks_Update_CompactionPreservesRelativeOrder(t *testing.T) {
+	db, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+
+	t0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+	t1 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+	t2 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+
+	// Frontend sent non-contiguous positions: [0, 500, 999]
+	setPositions(t, db, map[string]int{t0.ID: 0, t1.ID: 500, t2.ID: 999})
+
+	// Name-only update triggers compaction without any reorder.
+	// Relative order must be preserved: 0→0, 500→1, 999→2.
+	t0.Name = "Renamed"
+	if err := store.Tasks.Update(ctx, t0); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	assertPositions(t, store, proj.ID, nil, map[string]int{
+		t0.ID: 0,
+		t1.ID: 1,
+		t2.ID: 2,
+	})
+}
+
+func TestTasks_Update_NonContiguousReorderUp(t *testing.T) {
+	db, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+
+	t0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+	t1 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+	t2 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+
+	// Frontend sent non-contiguous positions: [0, 500, 999]
+	setPositions(t, db, map[string]int{t0.ID: 0, t1.ID: 500, t2.ID: 999})
+
+	// Move t2 (relative index 2) up to index 0
+	t2.Position = 0
+	if err := store.Tasks.Update(ctx, t2); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	assertPositions(t, store, proj.ID, nil, map[string]int{
+		t2.ID: 0,
+		t0.ID: 1,
+		t1.ID: 2,
+	})
+}
+
+func TestTasks_Update_NonContiguousReorderDown(t *testing.T) {
+	db, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+
+	t0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+	t1 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+	t2 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+
+	// Frontend sent non-contiguous positions: [0, 500, 999]
+	setPositions(t, db, map[string]int{t0.ID: 0, t1.ID: 500, t2.ID: 999})
+
+	// Move t0 (relative index 0) down to index 2
+	t0.Position = 2
+	if err := store.Tasks.Update(ctx, t0); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	assertPositions(t, store, proj.ID, nil, map[string]int{
+		t1.ID: 0,
+		t2.ID: 1,
+		t0.ID: 2,
+	})
+}
+
+func TestTasks_Update_PositionClampedTooLarge(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+
+	t0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+	t1 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+	t2 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+
+	// Request position 999 for a 3-task list — should be clamped to 2 (last index)
+	t0.Position = 999
+	if err := store.Tasks.Update(ctx, t0); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	assertPositions(t, store, proj.ID, nil, map[string]int{
+		t1.ID: 0,
+		t2.ID: 1,
+		t0.ID: 2,
+	})
+}
+
+func TestTasks_Update_PositionClampedNegative(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+
+	t0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+	t1 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+
+	// Request position -5 — should be clamped to 0
+	t1.Position = -5
+	if err := store.Tasks.Update(ctx, t1); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	assertPositions(t, store, proj.ID, nil, map[string]int{
+		t1.ID: 0,
+		t0.ID: 1,
+	})
+}
+
+func TestTasks_Move_NonContiguousPositions(t *testing.T) {
+	db, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	projX := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+	projY := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+
+	task1 := seed.Task(t, store, seed.TaskInput{ProjectID: projX.ID, OwnerID: owner.ID})
+	task2 := seed.Task(t, store, seed.TaskInput{ProjectID: projX.ID, OwnerID: owner.ID})
+	task3 := seed.Task(t, store, seed.TaskInput{ProjectID: projY.ID, OwnerID: owner.ID})
+
+	// Set non-contiguous positions in both projects
+	setPositions(t, db, map[string]int{task1.ID: 0, task2.ID: 500, task3.ID: 9999})
+
+	// Move task1 from projX to projY at position 0
+	task1.ProjectID = projY.ID
+	task1.ParentID = nil
+	task1.Position = 0
+	if err := store.Tasks.Update(ctx, task1); err != nil {
+		t.Fatalf("Update (cross-project move): %v", err)
+	}
+
+	// projX: task2 should be compacted to position 0
+	assertPositions(t, store, projX.ID, nil, map[string]int{
+		task2.ID: 0,
+	})
+
+	// projY: task1 at 0, task3 compacted after it
+	assertPositions(t, store, projY.ID, nil, map[string]int{
+		task1.ID: 0,
+		task3.ID: 1,
+	})
+}
+
+func TestTasks_Update_SamePositionNoChange(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+
+	t0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+	t1 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
+
+	// Update t0 keeping same position — no siblings should move
+	t0.Position = 0
+	if err := store.Tasks.Update(ctx, t0); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	assertPositions(t, store, proj.ID, nil, map[string]int{
+		t0.ID: 0,
+		t1.ID: 1,
 	})
 }
