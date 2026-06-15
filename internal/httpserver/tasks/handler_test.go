@@ -484,6 +484,16 @@ func TestDeleteTaskExtra(t *testing.T) {
 			t.Fatalf("status = %d, want 500", w.Code)
 		}
 	})
+
+	t.Run("DELETE /{id} not found (race) returns 404", func(t *testing.T) {
+		tr := taskRepoFound()
+		tr.DeleteFn = func(_ context.Context, _ string) error { return repo.ErrNotFound }
+		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
+		w := serve(handler, newRequest(http.MethodDelete, "/task-1", nil))
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", w.Code)
+		}
+	})
 }
 
 // ── Subtasks ──────────────────────────────────────────────────────────────────

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/js-beaulieu/tasks-api/internal/model"
+	"github.com/js-beaulieu/tasks-api/internal/repo"
 	httptestutil "github.com/js-beaulieu/tasks-api/internal/testing/http"
 	"github.com/js-beaulieu/tasks-api/internal/testing/seed"
 )
@@ -300,6 +301,39 @@ func TestTasksIntegration_Delete_RemovedFromDB(t *testing.T) {
 	_, err := env.Store.Tasks.Get(context.Background(), task.ID)
 	if err == nil {
 		t.Fatal("task still in DB after delete")
+	}
+}
+
+func TestTasksIntegration_Delete_NotFound(t *testing.T) {
+	env := httptestutil.NewEnv(t)
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodDelete, Path: "/tasks/nonexistent-id", Body: nil, UserID: env.User.ID})
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusNotFound)
+	}
+}
+
+func TestTasksIntegration_Delete_CompactsSiblingPositions(t *testing.T) {
+	env := httptestutil.NewEnv(t)
+	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
+	t0 := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
+	t1 := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
+	t2 := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
+
+	httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodDelete, Path: "/tasks/" + t1.ID, Body: nil, UserID: env.User.ID})
+
+	tasks, err := env.Store.Tasks.ListChildren(context.Background(), project.ID, nil, repo.TaskFilter{})
+	if err != nil {
+		t.Fatalf("ListChildren: %v", err)
+	}
+	positions := map[string]int{}
+	for _, tk := range tasks {
+		positions[tk.ID] = tk.Position
+	}
+	if positions[t0.ID] != 0 {
+		t.Errorf("t0 position = %d, want 0", positions[t0.ID])
+	}
+	if positions[t2.ID] != 1 {
+		t.Errorf("t2 position = %d, want 1", positions[t2.ID])
 	}
 }
 

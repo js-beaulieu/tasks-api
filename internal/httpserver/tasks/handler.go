@@ -193,7 +193,7 @@ func (h *Handler) delete(ctx context.Context, input *taskInput) (*struct{}, erro
 		return nil, huma.Error403Forbidden("forbidden")
 	}
 	if err := h.tasks.Delete(ctx, t.ID); err != nil {
-		return nil, huma.Error500InternalServerError("internal error")
+		return nil, humautil.RepoError(err)
 	}
 	return nil, nil
 }
