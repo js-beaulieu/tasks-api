@@ -872,3 +872,454 @@ func TestTasks_Update_SamePositionNoChange(t *testing.T) {
 		t1.ID: 1,
 	})
 }
+
+// ---- Status change with explicit position ----
+
+func TestTasks_Update_StatusChangeWithPosition_InsertsAtPosition(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+
+	// Create tasks in "in_progress": ip0(pos0), ip1(pos1), ip2(pos2)
+	ip0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "in_progress"})
+	ip1 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "in_progress"})
+	ip2 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "in_progress"})
+
+	// Create tasks in "todo": td0(pos0), td1(pos1), td2(pos2)
+	td0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+	td1 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+	td2 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+
+	// Move ip0 from in_progress to todo at position 1
+	// todo should become: td0=0, ip0=1, td1=2, td2=3
+	ip0.Status = "todo"
+	ip0.Position = 1
+	if err := store.Tasks.Update(ctx, ip0); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	// Verify in_progress: ip1 and ip2 compacted
+	ipStatus := "in_progress"
+	ipTasks, err := store.Tasks.ListChildren(ctx, proj.ID, nil, repo.TaskFilter{Status: &ipStatus})
+	if err != nil {
+		t.Fatalf("ListChildren in_progress: %v", err)
+	}
+	if len(ipTasks) != 2 {
+		t.Fatalf("in_progress count = %d, want 2", len(ipTasks))
+	}
+	posMap := map[string]int{}
+	for _, tk := range ipTasks {
+		posMap[tk.ID] = tk.Position
+	}
+	if posMap[ip1.ID] != 0 {
+		t.Errorf("ip1 position = %d, want 0 (compacted)", posMap[ip1.ID])
+	}
+	if posMap[ip2.ID] != 1 {
+		t.Errorf("ip2 position = %d, want 1 (compacted)", posMap[ip2.ID])
+	}
+
+	// Verify todo: td0=0, ip0=1, td1=2, td2=3
+	todoStatus := "todo"
+	todoTasks, err := store.Tasks.ListChildren(ctx, proj.ID, nil, repo.TaskFilter{Status: &todoStatus})
+	if err != nil {
+		t.Fatalf("ListChildren todo: %v", err)
+	}
+	posMap = map[string]int{}
+	for _, tk := range todoTasks {
+		posMap[tk.ID] = tk.Position
+	}
+	if posMap[td0.ID] != 0 {
+		t.Errorf("td0 position = %d, want 0", posMap[td0.ID])
+	}
+	if posMap[ip0.ID] != 1 {
+		t.Errorf("ip0 position in todo = %d, want 1", posMap[ip0.ID])
+	}
+	if posMap[td1.ID] != 2 {
+		t.Errorf("td1 position = %d, want 2 (shifted)", posMap[td1.ID])
+	}
+	if posMap[td2.ID] != 3 {
+		t.Errorf("td2 position = %d, want 3 (shifted)", posMap[td2.ID])
+	}
+}
+
+func TestTasks_Update_StatusChangeWithPosition0_InsertsAtBeginning(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+
+	// Create tasks in todo: t0(pos0), t1(pos1), t2(pos2)
+	t0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+	t1 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+	t2 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+
+	// Create one in_progress task
+	ip0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "in_progress"})
+
+	// Move ip0 from in_progress to todo at position 0
+	// todo should become: [ip0_at_0, t0_at_1, t1_at_2, t2_at_3]
+	ip0.Status = "todo"
+	ip0.Position = 0
+	if err := store.Tasks.Update(ctx, ip0); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	todoStatus := "todo"
+	todoTasks, err := store.Tasks.ListChildren(ctx, proj.ID, nil, repo.TaskFilter{Status: &todoStatus})
+	if err != nil {
+		t.Fatalf("ListChildren todo: %v", err)
+	}
+
+	posMap := map[string]int{}
+	for _, tk := range todoTasks {
+		posMap[tk.ID] = tk.Position
+	}
+	if posMap[ip0.ID] != 0 {
+		t.Errorf("ip0 position = %d, want 0", posMap[ip0.ID])
+	}
+	if posMap[t0.ID] != 1 {
+		t.Errorf("t0 position = %d, want 1 (shifted)", posMap[t0.ID])
+	}
+	if posMap[t1.ID] != 2 {
+		t.Errorf("t1 position = %d, want 2 (shifted)", posMap[t1.ID])
+	}
+	if posMap[t2.ID] != 3 {
+		t.Errorf("t2 position = %d, want 3 (shifted)", posMap[t2.ID])
+	}
+}
+
+// ---- Status change without position (append to end) ----
+
+func TestTasks_Update_StatusChangeWithoutPosition_AppendsToEnd(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+
+	// Create 3 tasks in todo
+	t0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+	t1 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+	t2 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+
+	// Create 2 tasks in in_progress
+	ip0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "in_progress"})
+	_ = seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "in_progress"})
+
+	// Move ip0 from in_progress to todo WITHOUT specifying position
+	// Should append at the end of todo (position 3, after t0=0, t1=1, t2=2)
+	// The handler sets position to len(siblings) when no position is given
+	siblings, err := store.Tasks.ListChildren(ctx, proj.ID, nil, repo.TaskFilter{Status: ptrStr("todo")})
+	if err != nil {
+		t.Fatalf("ListChildren todo: %v", err)
+	}
+	ip0.Status = "todo"
+	ip0.Position = len(siblings) // handler does this when no position specified
+	if err := store.Tasks.Update(ctx, ip0); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	// Verify todo: t0=0, t1=1, t2=2, ip0=3
+	todoStatus := "todo"
+	todoTasks, err := store.Tasks.ListChildren(ctx, proj.ID, nil, repo.TaskFilter{Status: &todoStatus})
+	if err != nil {
+		t.Fatalf("ListChildren todo: %v", err)
+	}
+	posMap := map[string]int{}
+	for _, tk := range todoTasks {
+		posMap[tk.ID] = tk.Position
+	}
+	if posMap[ip0.ID] != 3 {
+		t.Errorf("ip0 position in todo = %d, want 3 (appended)", posMap[ip0.ID])
+	}
+	if posMap[t0.ID] != 0 {
+		t.Errorf("t0 position = %d, want 0", posMap[t0.ID])
+	}
+	if posMap[t1.ID] != 1 {
+		t.Errorf("t1 position = %d, want 1", posMap[t1.ID])
+	}
+	if posMap[t2.ID] != 2 {
+		t.Errorf("t2 position = %d, want 2", posMap[t2.ID])
+	}
+
+	// Verify in_progress: ip1 compacted to 0
+	ipStatus := "in_progress"
+	ipTasks, err := store.Tasks.ListChildren(ctx, proj.ID, nil, repo.TaskFilter{Status: &ipStatus})
+	if err != nil {
+		t.Fatalf("ListChildren in_progress: %v", err)
+	}
+	if len(ipTasks) != 1 || ipTasks[0].Position != 0 {
+		t.Errorf("in_progress tasks = %v, want single task at position 0", ipTasks)
+	}
+}
+
+// ---- Position change only (same status) ----
+
+func TestTasks_Update_PositionOnly_InsertsAtPosition(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+
+	// Create 4 tasks in todo: t0=0, t1=1, t2=2, t3=3
+	t0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+	t1 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+	t2 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+	t3 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+
+	// Move t3 (pos=3) to position 2
+	// Expected: t0=0, t1=1, t3=2, t2=3
+	t3.Position = 2
+	if err := store.Tasks.Update(ctx, t3); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	assertPositions(t, store, proj.ID, nil, map[string]int{
+		t0.ID: 0,
+		t1.ID: 1,
+		t3.ID: 2,
+		t2.ID: 3,
+	})
+}
+
+// ---- Status change to empty group with position ----
+
+func TestTasks_Update_StatusChangeToEmptyGroup_WithPosition(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+
+	// Create task in todo
+	t0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+	_ = seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+
+	// Move to in_progress (empty group) at position 1
+	// Position 1 in empty group should be clamped to 0
+	t0.Status = "in_progress"
+	t0.Position = 1
+	if err := store.Tasks.Update(ctx, t0); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	ipStatus := "in_progress"
+	ipTasks, err := store.Tasks.ListChildren(ctx, proj.ID, nil, repo.TaskFilter{Status: &ipStatus})
+	if err != nil {
+		t.Fatalf("ListChildren in_progress: %v", err)
+	}
+	if len(ipTasks) != 1 || ipTasks[0].Position != 0 {
+		t.Errorf("in_progress task position = %d, want 0 (clamped from 1)", ipTasks[0].Position)
+	}
+}
+
+// ---- Status change to empty group without position ----
+
+func TestTasks_Update_StatusChangeToEmptyGroup_WithoutPosition(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+
+	t0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+	_ = seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+
+	// Move to in_progress (empty group), handler sets position = 0 (len of empty siblings)
+	siblings, _ := store.Tasks.ListChildren(ctx, proj.ID, nil, repo.TaskFilter{Status: ptrStr("in_progress")})
+	t0.Status = "in_progress"
+	t0.Position = len(siblings)
+	if err := store.Tasks.Update(ctx, t0); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	ipStatus := "in_progress"
+	ipTasks, err := store.Tasks.ListChildren(ctx, proj.ID, nil, repo.TaskFilter{Status: &ipStatus})
+	if err != nil {
+		t.Fatalf("ListChildren in_progress: %v", err)
+	}
+	if len(ipTasks) != 1 || ipTasks[0].Position != 0 {
+		t.Errorf("in_progress task position = %d, want 0", ipTasks[0].Position)
+	}
+}
+
+// ---- Compaction of source group after status change ----
+
+func TestTasks_Update_StatusChange_CompactsSourceGroup(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+
+	// 3 tasks in todo
+	t0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+	t1 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+	t2 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+
+	// Move t1 from todo to in_progress at position 0
+	t1.Status = "in_progress"
+	t1.Position = 0
+	if err := store.Tasks.Update(ctx, t1); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	// Source group (todo) should be compacted: t0=0, t2=1
+	todoStatus := "todo"
+	todoTasks, err := store.Tasks.ListChildren(ctx, proj.ID, nil, repo.TaskFilter{Status: &todoStatus})
+	if err != nil {
+		t.Fatalf("ListChildren todo: %v", err)
+	}
+	posMap := map[string]int{}
+	for _, tk := range todoTasks {
+		posMap[tk.ID] = tk.Position
+	}
+	if posMap[t0.ID] != 0 {
+		t.Errorf("t0 position = %d, want 0", posMap[t0.ID])
+	}
+	if posMap[t2.ID] != 1 {
+		t.Errorf("t2 position = %d, want 1 (compacted from 2)", posMap[t2.ID])
+	}
+}
+
+// ---- Status change with position in the middle of a populated group ----
+
+func TestTasks_Update_StatusChangeWithPosition_InsertsInMiddle(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+
+	// 3 tasks in done
+	d0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "done"})
+	d1 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "done"})
+	d2 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "done"})
+
+	// 1 task in todo
+	t0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+
+	// Move t0 from todo to done at position 1
+	// done should become: d0=0, t0=1, d1=2, d2=3
+	t0.Status = "done"
+	t0.Position = 1
+	if err := store.Tasks.Update(ctx, t0); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	doneStatus := "done"
+	doneTasks, err := store.Tasks.ListChildren(ctx, proj.ID, nil, repo.TaskFilter{Status: &doneStatus})
+	if err != nil {
+		t.Fatalf("ListChildren done: %v", err)
+	}
+	posMap := map[string]int{}
+	for _, tk := range doneTasks {
+		posMap[tk.ID] = tk.Position
+	}
+	if posMap[d0.ID] != 0 {
+		t.Errorf("d0 position = %d, want 0", posMap[d0.ID])
+	}
+	if posMap[t0.ID] != 1 {
+		t.Errorf("t0 position = %d, want 1 (inserted)", posMap[t0.ID])
+	}
+	if posMap[d1.ID] != 2 {
+		t.Errorf("d1 position = %d, want 2 (shifted)", posMap[d1.ID])
+	}
+	if posMap[d2.ID] != 3 {
+		t.Errorf("d2 position = %d, want 3 (shifted)", posMap[d2.ID])
+	}
+}
+
+func ptrStr(s string) *string { return &s }
+
+func TestTasks_Update_StatusChange_PositionClampedTooLarge(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+
+	d0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "done"})
+	d1 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "done"})
+
+	t0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+
+	// Move t0 to done at position 999 — should clamp to 2 (siblingCount=2, joining)
+	t0.Status = "done"
+	t0.Position = 999
+	if err := store.Tasks.Update(ctx, t0); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	doneStatus := "done"
+	doneTasks, err := store.Tasks.ListChildren(ctx, proj.ID, nil, repo.TaskFilter{Status: &doneStatus})
+	if err != nil {
+		t.Fatalf("ListChildren done: %v", err)
+	}
+	posMap := map[string]int{}
+	for _, tk := range doneTasks {
+		posMap[tk.ID] = tk.Position
+	}
+	if posMap[d0.ID] != 0 {
+		t.Errorf("d0 position = %d, want 0", posMap[d0.ID])
+	}
+	if posMap[d1.ID] != 1 {
+		t.Errorf("d1 position = %d, want 1", posMap[d1.ID])
+	}
+	if posMap[t0.ID] != 2 {
+		t.Errorf("t0 position = %d, want 2 (clamped append)", posMap[t0.ID])
+	}
+}
+
+func TestTasks_Update_StatusChangeToEmptyGroup_PositionClampedTooLarge(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+
+	t0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+
+	// Move to done (empty) at position 999 — should clamp to 0
+	t0.Status = "done"
+	t0.Position = 999
+	if err := store.Tasks.Update(ctx, t0); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	doneStatus := "done"
+	doneTasks, err := store.Tasks.ListChildren(ctx, proj.ID, nil, repo.TaskFilter{Status: &doneStatus})
+	if err != nil {
+		t.Fatalf("ListChildren done: %v", err)
+	}
+	if len(doneTasks) != 1 || doneTasks[0].Position != 0 {
+		t.Errorf("done task position = %d, want 0 (clamped from 999 in empty group)", doneTasks[0].Position)
+	}
+}
+
+func TestTasks_Update_StatusChange_PositionNegative(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+
+	d0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "done"})
+	t0 := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID, Status: "todo"})
+
+	// Move t0 to done at position -5 — should clamp to 0
+	t0.Status = "done"
+	t0.Position = -5
+	if err := store.Tasks.Update(ctx, t0); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	doneStatus := "done"
+	doneTasks, err := store.Tasks.ListChildren(ctx, proj.ID, nil, repo.TaskFilter{Status: &doneStatus})
+	if err != nil {
+		t.Fatalf("ListChildren done: %v", err)
+	}
+	posMap := map[string]int{}
+	for _, tk := range doneTasks {
+		posMap[tk.ID] = tk.Position
+	}
+	if posMap[t0.ID] != 0 {
+		t.Errorf("t0 position = %d, want 0 (clamped from -5)", posMap[t0.ID])
+	}
+	if posMap[d0.ID] != 1 {
+		t.Errorf("d0 position = %d, want 1 (shifted)", posMap[d0.ID])
+	}
+}

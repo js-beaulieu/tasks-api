@@ -56,6 +56,7 @@ func lockTaskSiblingLists(ctx context.Context, tx *sql.Tx, lists ...taskSiblingL
 type taskSiblingList struct {
 	projectID string
 	parentID  *string
+	status    string
 }
 
 func (l taskSiblingList) key() string {
@@ -63,7 +64,7 @@ func (l taskSiblingList) key() string {
 	if l.parentID != nil {
 		parentID = *l.parentID
 	}
-	return l.projectID + ":" + parentID
+	return l.projectID + ":" + parentID + ":" + l.status
 }
 
 func lockAdvisory(ctx context.Context, tx *sql.Tx, lock advisoryLock) error {

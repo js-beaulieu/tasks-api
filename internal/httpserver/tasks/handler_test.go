@@ -60,6 +60,9 @@ func taskRepoFound() *mock.TaskRepo {
 		GetFn: func(_ context.Context, _ string) (*model.Task, error) {
 			return newTestTask(), nil
 		},
+		ListChildrenFn: func(_ context.Context, _ string, _ *string, _ repo.TaskFilter) ([]*model.Task, error) {
+			return nil, nil
+		},
 	}
 }
 
