@@ -109,22 +109,15 @@ func (s *taskStore) Create(ctx context.Context, t *model.Task) error {
 	if err := validateStatus(ctx, tx, t.ProjectID, t.Status); err != nil {
 		return err
 	}
-	if err := lockTaskSiblingLists(ctx, tx, taskSiblingList{projectID: t.ProjectID, parentID: t.ParentID}); err != nil {
+	if err := lockTaskSiblingLists(ctx, tx, taskSiblingList{projectID: t.ProjectID, parentID: t.ParentID, status: t.Status}); err != nil {
 		return err
 	}
 
-	// Auto-assign position
-	var pos int
-	err = tx.QueryRowContext(ctx,
-		bind(`SELECT COALESCE(MAX(position), -1) + 1
-		 FROM tasks
-		 WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ?`),
-		t.ProjectID, t.ParentID,
-	).Scan(&pos)
+	// Auto-assign position within the task's status group
+	t.Position, err = nextPosition(ctx, tx, t.ProjectID, t.ParentID, t.Status)
 	if err != nil {
-		return fmt.Errorf("compute position: %w", err)
+		return err
 	}
-	t.Position = pos
 
 	_, err = tx.ExecContext(ctx,
 		bind(`INSERT INTO tasks
@@ -163,9 +156,10 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 	// Load current state
 	var cur model.Task
 	var curParentID sql.NullString
+	var curStatus string
 	err = tx.QueryRowContext(ctx,
-		bind(`SELECT project_id, parent_id, position FROM tasks WHERE id = ? FOR UPDATE`), t.ID,
-	).Scan(&cur.ProjectID, &curParentID, &cur.Position)
+		bind(`SELECT project_id, parent_id, status, position FROM tasks WHERE id = ? FOR UPDATE`), t.ID,
+	).Scan(&cur.ProjectID, &curParentID, &curStatus, &cur.Position)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return repo.ErrNotFound
@@ -185,12 +179,21 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 		return err
 	}
 
-	// Determine whether this is a move
+	// Determine target status (defaults to current if not changed)
+	targetStatus := t.Status
+	if targetStatus == "" {
+		targetStatus = curStatus
+	}
+
+	// Determine whether this is a move (project or parent changed) or a reorder within status
 	newParentID := t.ParentID
 	isMove := t.ProjectID != cur.ProjectID || !parentIDsEqual(newParentID, cur.ParentID)
+	statusChanged := targetStatus != curStatus
+
+	// Lock the relevant sibling lists: current group and (if different) the target group
 	if err := lockTaskSiblingLists(ctx, tx,
-		taskSiblingList{projectID: cur.ProjectID, parentID: cur.ParentID},
-		taskSiblingList{projectID: targetProjectID, parentID: newParentID},
+		taskSiblingList{projectID: cur.ProjectID, parentID: cur.ParentID, status: curStatus},
+		taskSiblingList{projectID: targetProjectID, parentID: newParentID, status: targetStatus},
 	); err != nil {
 		return err
 	}
@@ -202,16 +205,15 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 	}
 
 	// Normalize positions so arithmetic operates on contiguous 0-based indices.
-	// For moves, compact only the target group; the old group is compacted
-	// after the task is moved out (which closes the gap).
-	compactProjectID := cur.ProjectID
-	compactParentID := cur.ParentID
-	if isMove {
-		compactProjectID = targetProjectID
-		compactParentID = newParentID
-	}
-	if err := compactPositions(ctx, tx, compactProjectID, compactParentID); err != nil {
+	// Always compact the target status group first.
+	if err := compactPositions(ctx, tx, targetProjectID, newParentID, targetStatus); err != nil {
 		return err
+	}
+	// If moving between groups, also compact the source group before the task leaves.
+	if isMove || statusChanged {
+		if err := compactPositions(ctx, tx, cur.ProjectID, cur.ParentID, curStatus); err != nil {
+			return err
+		}
 	}
 
 	// Re-read the task's position after compaction.
@@ -222,13 +224,12 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 		return fmt.Errorf("reload position: %w", err)
 	}
 
-	// Clamp requested position to valid range.
-	siblingCount, err := countSiblings(ctx, tx, targetProjectID, newParentID)
+	siblingCount, err := countSiblings(ctx, tx, targetProjectID, newParentID, targetStatus)
 	if err != nil {
 		return err
 	}
 	maxPos := siblingCount - 1
-	if isMove {
+	if isMove || statusChanged {
 		maxPos = siblingCount // task will join this group
 	}
 	if t.Position > maxPos {
@@ -239,10 +240,10 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 	}
 
 	// Shift siblings to make room at the requested position.
-	// Skip when position is unchanged and this is not a move.
+	// For status changes, always shift (treat like a move into the new group).
 	positionChanged := t.Position != cur.Position
-	if positionChanged || isMove {
-		if err := makeRoom(ctx, tx, t.ID, cur, targetProjectID, newParentID, t.Position, isMove); err != nil {
+	if positionChanged || isMove || statusChanged {
+		if err := makeRoom(ctx, tx, t.ID, cur, targetProjectID, newParentID, targetStatus, t.Position, isMove || statusChanged); err != nil {
 			return err
 		}
 	}
@@ -288,9 +289,9 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 		return fmt.Errorf("update task: %w", err)
 	}
 
-	// After a move, compact the old group to close the gap.
-	if isMove {
-		if err := compactPositions(ctx, tx, cur.ProjectID, cur.ParentID); err != nil {
+	// After a move or status change, compact the old group to close the gap.
+	if isMove || statusChanged {
+		if err := compactPositions(ctx, tx, cur.ProjectID, cur.ParentID, curStatus); err != nil {
 			return err
 		}
 	}
@@ -341,10 +342,29 @@ func (s *taskStore) CompleteTask(ctx context.Context, id, doneStatus string) (*m
 		return nil, nil, repo.ErrConflict
 	}
 
-	// Mark the task done.
+	// Mark the task done and move it to the end of the done status group.
+	// Lock both the old and new status groups.
+	if err := lockTaskSiblingLists(ctx, tx,
+		taskSiblingList{projectID: task.ProjectID, parentID: task.ParentID, status: task.Status},
+		taskSiblingList{projectID: task.ProjectID, parentID: task.ParentID, status: doneStatus},
+	); err != nil {
+		return nil, nil, err
+	}
+
+	// Compact the old status group before removing the task.
+	if err := compactPositions(ctx, tx, task.ProjectID, task.ParentID, task.Status); err != nil {
+		return nil, nil, err
+	}
+
+	// Compute the new position (appended to the done status group).
+	newPos, err := nextPosition(ctx, tx, task.ProjectID, task.ParentID, doneStatus)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	if _, err = tx.ExecContext(ctx,
-		bind(`UPDATE tasks SET status = ?, updated_at = NOW() WHERE id = ?`),
-		doneStatus, id,
+		bind(`UPDATE tasks SET status = ?, position = ?, updated_at = NOW() WHERE id = ?`),
+		doneStatus, newPos, id,
 	); err != nil {
 		return nil, nil, fmt.Errorf("update task status: %w", err)
 	}
@@ -374,16 +394,13 @@ func (s *taskStore) CompleteTask(ctx context.Context, id, doneStatus string) (*m
 		return nil, nil, fmt.Errorf("get first status: %w", err)
 	}
 
-	// Compute position for the new task (appended to top-level siblings).
-	if err := lockTaskSiblingLists(ctx, tx, taskSiblingList{projectID: task.ProjectID}); err != nil {
+	// Compute position for the new task (appended to siblings in the first status).
+	if err := lockTaskSiblingLists(ctx, tx, taskSiblingList{projectID: task.ProjectID, status: firstStatus}); err != nil {
 		return nil, nil, err
 	}
-	var pos int
-	if err = tx.QueryRowContext(ctx,
-		bind(`SELECT COALESCE(MAX(position), -1) + 1 FROM tasks WHERE project_id = ? AND parent_id IS NULL`),
-		task.ProjectID,
-	).Scan(&pos); err != nil {
-		return nil, nil, fmt.Errorf("compute position: %w", err)
+	pos, err := nextPosition(ctx, tx, task.ProjectID, nil, firstStatus)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	// Build the next occurrence task.
@@ -457,9 +474,10 @@ func (s *taskStore) Delete(ctx context.Context, id string) error {
 	defer func() { _ = tx.Rollback() }()
 
 	var projectID, parentID sql.NullString
+	var taskStatus string
 	err = tx.QueryRowContext(ctx,
-		bind(`SELECT project_id, parent_id FROM tasks WHERE id = ?`), id,
-	).Scan(&projectID, &parentID)
+		bind(`SELECT project_id, parent_id, status FROM tasks WHERE id = ?`), id,
+	).Scan(&projectID, &parentID, &taskStatus)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return repo.ErrNotFound
@@ -475,7 +493,7 @@ func (s *taskStore) Delete(ctx context.Context, id string) error {
 	if parentID.Valid {
 		pid = &parentID.String
 	}
-	if err := compactPositions(ctx, tx, projectID.String, pid); err != nil {
+	if err := compactPositions(ctx, tx, projectID.String, pid, taskStatus); err != nil {
 		return err
 	}
 
@@ -515,21 +533,25 @@ func validateMove(ctx context.Context, tx *sql.Tx, taskID string, cur model.Task
 	return validateMoveParent(ctx, tx, targetProjectID, newParentID)
 }
 
-func makeRoom(ctx context.Context, tx *sql.Tx, taskID string, cur model.Task, targetProjectID string, newParentID *string, newPosition int, isMove bool) error {
-	if isMove || newPosition < cur.Position {
+func makeRoom(ctx context.Context, tx *sql.Tx, taskID string, cur model.Task, targetProjectID string, newParentID *string, newStatus string, newPosition int, isMove bool) error {
+	shiftRight := newPosition < cur.Position || isMove
+	shiftLeft := newPosition > cur.Position && !isMove
+
+	switch {
+	case shiftRight:
 		_, err := tx.ExecContext(ctx,
 			bind(`UPDATE tasks SET position = position + 1
-			 WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ? AND position >= ? AND id != ?`),
-			targetProjectID, newParentID, newPosition, taskID,
+			 WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ? AND status = ? AND position >= ? AND id != ?`),
+			targetProjectID, newParentID, newStatus, newPosition, taskID,
 		)
 		if err != nil {
 			return fmt.Errorf("shift siblings right: %w", err)
 		}
-	} else if newPosition > cur.Position {
+	case shiftLeft:
 		_, err := tx.ExecContext(ctx,
 			bind(`UPDATE tasks SET position = position - 1
-			 WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ? AND position > ? AND position <= ? AND id != ?`),
-			targetProjectID, newParentID, cur.Position, newPosition, taskID,
+			 WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ? AND status = ? AND position > ? AND position <= ? AND id != ?`),
+			targetProjectID, newParentID, newStatus, cur.Position, newPosition, taskID,
 		)
 		if err != nil {
 			return fmt.Errorf("shift siblings left: %w", err)
@@ -538,11 +560,23 @@ func makeRoom(ctx context.Context, tx *sql.Tx, taskID string, cur model.Task, ta
 	return nil
 }
 
-func countSiblings(ctx context.Context, tx *sql.Tx, projectID string, parentID *string) (int, error) {
+func nextPosition(ctx context.Context, tx *sql.Tx, projectID string, parentID *string, status string) (int, error) {
+	var pos int
+	err := tx.QueryRowContext(ctx,
+		bind(`SELECT COALESCE(MAX(position), -1) + 1 FROM tasks WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ? AND status = ?`),
+		projectID, parentID, status,
+	).Scan(&pos)
+	if err != nil {
+		return 0, fmt.Errorf("compute next position: %w", err)
+	}
+	return pos, nil
+}
+
+func countSiblings(ctx context.Context, tx *sql.Tx, projectID string, parentID *string, status string) (int, error) {
 	var count int
 	err := tx.QueryRowContext(ctx,
-		bind(`SELECT COUNT(*) FROM tasks WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ?`),
-		projectID, parentID,
+		bind(`SELECT COUNT(*) FROM tasks WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ? AND status = ?`),
+		projectID, parentID, status,
 	).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("count siblings: %w", err)
@@ -585,16 +619,16 @@ func validateMoveParent(ctx context.Context, tx *sql.Tx, targetProjectID string,
 	return nil
 }
 
-func compactPositions(ctx context.Context, tx *sql.Tx, projectID string, parentID *string) error {
+func compactPositions(ctx context.Context, tx *sql.Tx, projectID string, parentID *string, status string) error {
 	_, err := tx.ExecContext(ctx,
 		bind(`UPDATE tasks SET position = sub.rn
 		 FROM (
 			 SELECT id, ROW_NUMBER() OVER (ORDER BY position) - 1 AS rn
 			 FROM tasks
-			 WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ?
+			 WHERE project_id = ? AND parent_id IS NOT DISTINCT FROM ? AND status = ?
 		 ) sub
 		 WHERE tasks.id = sub.id AND tasks.position != sub.rn`),
-		projectID, parentID,
+		projectID, parentID, status,
 	)
 	if err != nil {
 		return fmt.Errorf("compact positions: %w", err)

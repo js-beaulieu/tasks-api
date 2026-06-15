@@ -154,17 +154,24 @@ func (h *Handler) update(ctx context.Context, input *updateTaskInput) (*taskOutp
 	if input.Body.Description != nil {
 		t.Description = input.Body.Description
 	}
+	oldStatus := t.Status
 	if input.Body.Status != nil {
 		t.Status = *input.Body.Status
+	}
+	if input.Body.Position != nil {
+		t.Position = *input.Body.Position
+	} else if input.Body.Status != nil && *input.Body.Status != oldStatus {
+		siblingCount, err := h.tasks.ListChildren(ctx, t.ProjectID, t.ParentID, repo.TaskFilter{Status: input.Body.Status})
+		if err != nil {
+			return nil, huma.Error500InternalServerError("internal error")
+		}
+		t.Position = len(siblingCount)
 	}
 	if input.Body.DueDate != nil {
 		t.DueDate = input.Body.DueDate
 	}
 	if input.Body.AssigneeID != nil {
 		t.AssigneeID = input.Body.AssigneeID
-	}
-	if input.Body.Position != nil {
-		t.Position = *input.Body.Position
 	}
 	if input.Body.ParentID.Set {
 		t.ParentID = input.Body.ParentID.Value
