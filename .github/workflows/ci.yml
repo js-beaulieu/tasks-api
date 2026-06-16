@@ -9,10 +9,6 @@ concurrency:
   group: ci-${{ github.head_ref }}
   cancel-in-progress: true
 
-concurrency:
-  group: ci-${{ github.head_ref }}
-  cancel-in-progress: true
-
 jobs:
   ci:
     if: github.event.pull_request.draft == false
