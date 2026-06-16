@@ -24,3 +24,9 @@ jobs:
           context: .
           push: true
           tags: ghcr.io/${{ github.repository }}:latest
+
+      - name: Trigger Watchtower update
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.WATCHTOWER_API_TOKEN }}" \
+            https://watchtower.${{ secrets.DOMAIN }}/v1/update
