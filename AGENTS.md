@@ -2,7 +2,7 @@
 
 Backend API for a task management application. Exposes a REST API and an MCP (Model Context Protocol) interface, backed by Postgres.
 
-Additional long-form project documentation lives under [`docs/`](docs/README.md).
+Additional long-form project documentation is in Basic Memory (home-stack project, `architecture/` directory).
 
 ## Commands
 
@@ -21,7 +21,7 @@ task check                   # format + lint + build + test:coverage
 
 ## Architecture
 
-See [`docs/architecture/overview.md`](docs/architecture/overview.md) for the current runtime wiring, package map, auth model, Huma route patterns, and recurring-task behavior.
+See the Basic Memory `architecture/Tasks API Domain Model` note for the domain model, auth, and recurring-task behavior.
 
 ### Package map
 
@@ -38,7 +38,7 @@ See [`docs/architecture/overview.md`](docs/architecture/overview.md) for the cur
 
 ## Domain Model
 
-See [`docs/architecture/overview.md`](docs/architecture/overview.md).
+See the Basic Memory `architecture/Tasks API Domain Model` note.
 
 ## Auth & Access Control
 
@@ -59,7 +59,7 @@ Roles: `read(1) < modify(2) < admin(3)`. `RequireRole(min, actual string) bool` 
 
 ## Recurring Tasks
 
-See [`docs/architecture/overview.md`](docs/architecture/overview.md).
+See the Basic Memory `architecture/Tasks API Domain Model` note.
 
 ## MCP
 
