@@ -10,11 +10,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  changes:
+  ci:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    outputs:
-      code: ${{ steps.filter.outputs.code }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,19 +30,14 @@ jobs:
               - '.dockerignore'
               - '.github/**'
 
-  ci:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
       - uses: actions/setup-go@v5
+        if: steps.filter.outputs.code == 'true'
         with:
           go-version-file: go.mod
           cache: false
 
       - uses: actions/cache@v4
+        if: steps.filter.outputs.code == 'true'
         with:
           path: |
             ~/go/pkg/mod
@@ -53,12 +46,15 @@ jobs:
           restore-keys: go-${{ runner.os }}-
 
       - name: Install Task
+        if: steps.filter.outputs.code == 'true'
         uses: go-task/setup-task@v2
         with:
           version: "3.x"
 
       - name: Lint
+        if: steps.filter.outputs.code == 'true'
         run: task lint
 
       - name: Tests
+        if: steps.filter.outputs.code == 'true'
         run: task test

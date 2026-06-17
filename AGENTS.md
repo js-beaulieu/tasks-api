@@ -2,8 +2,6 @@
 
 Backend API for a task management application. Exposes a REST API and an MCP (Model Context Protocol) interface, backed by Postgres.
 
-Additional long-form project documentation is in Basic Memory (home-stack project, `architecture/` directory).
-
 ## Commands
 
 ```bash
@@ -21,8 +19,6 @@ task check                   # format + lint + build + test:coverage
 
 ## Architecture
 
-See the Basic Memory `architecture/Tasks API Domain Model` note for the domain model, auth, and recurring-task behavior.
-
 ### Package map
 
 | Package | Role |
@@ -38,7 +34,34 @@ See the Basic Memory `architecture/Tasks API Domain Model` note for the domain m
 
 ## Domain Model
 
-See the Basic Memory `architecture/Tasks API Domain Model` note.
+### Entities
+
+```
+User          id, name, email, created_at
+Project       id, name, description*, due_date*, owner_id, assignee_id*, created_at, updated_at
+ProjectMember project_id, user_id, role (read|modify|admin)
+ProjectStatus project_id, status, position
+Task          id, project_id, parent_id*, name, description*, status, due_date*, owner_id,
+               assignee_id*, position, recurrence* (RFC 5545 RRULE), created_at, updated_at
+Tags          stored as strings in task_tags(task_id, tag)
+```
+
+`*` = nullable field
+
+### Default Statuses
+
+Seeded on `CreateProject`: `todo`, `in_progress`, `done`, `cancelled`. Task status is validated at the app layer against `project_statuses` (not a foreign key).
+
+### Key Constraints
+
+- Cross-project move of parent tasks with children returns 409 (blocked until subtree move is supported).
+- No bulk reorder endpoint — deferred past MVP.
+- No task/project text search — deferred past MVP.
+- Project has `assignee_id` but the web app ignores it for MVP.
+- Tags are free-form strings, not a separate entity; `ON CONFLICT DO NOTHING` for idempotent add.
+- New tasks append to end of their sibling list.
+- `parent_id: null` detaches a task; omitted `parent_id` leaves it unchanged.
+- Deleting a parent cascades to subtasks and tags via DB foreign keys.
 
 ## Auth & Access Control
 
@@ -59,7 +82,15 @@ Roles: `read(1) < modify(2) < admin(3)`. `RequireRole(min, actual string) bool` 
 
 ## Recurring Tasks
 
-See the Basic Memory `architecture/Tasks API Domain Model` note.
+Only triggered by `POST /tasks/{id}/complete` or MCP `complete_task`. Plain status updates do **not** create next occurrences.
+
+On completion of a recurring task with `due_date`:
+1. Marks current task done.
+2. Creates next occurrence with `due_date = nextOccurrence(due, rrule)`.
+3. Sets next task status to first project status (lowest position).
+4. Copies tags.
+
+Response: `{completed, next}` where `next` is `null` for non-recurring. Completing a recurring task without a due date returns conflict.
 
 ## MCP
 
