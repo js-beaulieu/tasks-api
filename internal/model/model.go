@@ -10,14 +10,15 @@ type User struct {
 }
 
 type Project struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Description *string   `json:"description,omitempty"`
-	DueDate     *string   `json:"due_date,omitempty"`
-	OwnerID     string    `json:"owner_id"`
-	AssigneeID  *string   `json:"assignee_id,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	Description   *string   `json:"description,omitempty"`
+	DueDate       *string   `json:"due_date,omitempty"`
+	OwnerID       string    `json:"owner_id"`
+	AssigneeID    *string   `json:"assignee_id,omitempty"`
+	EffectiveRole string    `json:"effective_role,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 type ProjectMember struct {

@@ -21,11 +21,13 @@ func (s *projectStore) List(ctx context.Context, userID string) ([]*model.Projec
 	logger.FromCtx(ctx).Debug("listing projects", "user_id", userID)
 	rows, err := s.db.QueryContext(ctx, bind(`
 		SELECT DISTINCT p.id, p.name, p.description, p.due_date,
-		                p.owner_id, p.assignee_id, p.created_at, p.updated_at
+		                p.owner_id, p.assignee_id, p.created_at, p.updated_at,
+		                CASE WHEN p.owner_id = ? THEN ? ELSE pm.role END AS effective_role
 		FROM projects p
 		LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
 		WHERE p.owner_id = ? OR pm.user_id = ?
 		ORDER BY p.created_at DESC`),
+		userID, model.RoleAdmin,
 		userID, userID, userID,
 	)
 	if err != nil {
@@ -50,7 +52,8 @@ func (s *projectStore) Get(ctx context.Context, id string) (*model.Project, erro
 	logger.FromCtx(ctx).Debug("getting project", "id", id)
 	rows, err := s.db.QueryContext(ctx, bind(`
 		SELECT id, name, description, due_date,
-		       owner_id, assignee_id, created_at, updated_at
+		       owner_id, assignee_id, created_at, updated_at,
+		       '' AS effective_role
 		FROM projects WHERE id = ?`), id)
 	if err != nil {
 		return nil, fmt.Errorf("get project: %w", err)
@@ -464,6 +467,7 @@ func scanProject(rows *sql.Rows) (*model.Project, error) {
 	err := rows.Scan(
 		&p.ID, &p.Name, &p.Description, &p.DueDate,
 		&p.OwnerID, &p.AssigneeID, &p.CreatedAt, &p.UpdatedAt,
+		&p.EffectiveRole,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("scan project: %w", err)

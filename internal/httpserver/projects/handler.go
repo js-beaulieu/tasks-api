@@ -113,6 +113,7 @@ func (h *Handler) create(ctx context.Context, input *createProjectInput) (*creat
 	if err := h.projects.Create(ctx, p, input.Body.Statuses...); err != nil {
 		return nil, huma.Error500InternalServerError("internal error")
 	}
+	p.EffectiveRole = model.RoleAdmin
 	return &createdProjectOutput{Status: http.StatusCreated, Body: p}, nil
 }
 
@@ -121,10 +122,11 @@ type projectInput struct {
 }
 
 func (h *Handler) get(ctx context.Context, input *projectInput) (*projectOutput, error) {
-	p, _, err := h.loadProject(ctx, input.ProjectID)
+	p, role, err := h.loadProject(ctx, input.ProjectID)
 	if err != nil {
 		return nil, humautil.RepoError(err)
 	}
+	p.EffectiveRole = role
 	return &projectOutput{Body: p}, nil
 }
 
@@ -163,6 +165,7 @@ func (h *Handler) update(ctx context.Context, input *updateProjectInput) (*proje
 	if err := h.projects.Update(ctx, p); err != nil {
 		return nil, huma.Error500InternalServerError("internal error")
 	}
+	p.EffectiveRole = role
 	return &projectOutput{Body: p}, nil
 }
 
