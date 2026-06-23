@@ -452,6 +452,130 @@ func TestTasks_Move_BetweenProjects(t *testing.T) {
 	}
 }
 
+func TestTasks_Move_SubtreeBetweenProjects(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+	sourceOwner := seed.User(t, store, seed.UserInput{ID: "u-source", Name: "Alice", Email: "alice@test.com"})
+	targetOwner := seed.User(t, store, seed.UserInput{ID: "u-target", Name: "Bob", Email: "bob@test.com"})
+	preservedAssignee := seed.User(t, store, seed.UserInput{ID: "u-keep", Name: "Cara", Email: "cara@test.com"})
+	fallbackAssignee := seed.User(t, store, seed.UserInput{ID: "u-fallback", Name: "Dan", Email: "dan@test.com"})
+
+	projSource := seed.Project(t, store, seed.ProjectInput{OwnerID: sourceOwner.ID, AdditionalStatuses: []string{"review"}})
+	projTarget := seed.Project(t, store, seed.ProjectInput{OwnerID: targetOwner.ID})
+	if err := store.Projects.AddMember(ctx, &model.ProjectMember{ProjectID: projTarget.ID, UserID: preservedAssignee.ID, Role: model.RoleModify}); err != nil {
+		t.Fatalf("AddMember target preserved assignee: %v", err)
+	}
+
+	oldParent := seed.Task(t, store, seed.TaskInput{ProjectID: projSource.ID, OwnerID: sourceOwner.ID})
+	movedRoot := seed.Task(t, store, seed.TaskInput{
+		ProjectID:  projSource.ID,
+		ParentID:   &oldParent.ID,
+		OwnerID:    sourceOwner.ID,
+		Status:     "review",
+		AssigneeID: &fallbackAssignee.ID,
+	})
+	child := seed.Task(t, store, seed.TaskInput{
+		ProjectID:  projSource.ID,
+		ParentID:   &movedRoot.ID,
+		OwnerID:    sourceOwner.ID,
+		Status:     "done",
+		AssigneeID: &preservedAssignee.ID,
+	})
+	grandchild := seed.Task(t, store, seed.TaskInput{
+		ProjectID: projSource.ID,
+		ParentID:  &child.ID,
+		OwnerID:   sourceOwner.ID,
+		Status:    "review",
+	})
+	sourceSibling := seed.Task(t, store, seed.TaskInput{ProjectID: projSource.ID, ParentID: &oldParent.ID, OwnerID: sourceOwner.ID})
+	targetExisting := seed.Task(t, store, seed.TaskInput{ProjectID: projTarget.ID, OwnerID: targetOwner.ID})
+
+	movedRoot.ProjectID = projTarget.ID
+	movedRoot.Position = 1
+	if err := store.Tasks.Update(ctx, movedRoot); err != nil {
+		t.Fatalf("Update (cross-project subtree move): %v", err)
+	}
+
+	gotRoot, err := store.Tasks.Get(ctx, movedRoot.ID)
+	if err != nil {
+		t.Fatalf("Get root: %v", err)
+	}
+	if gotRoot.ProjectID != projTarget.ID {
+		t.Fatalf("root project_id = %q, want %q", gotRoot.ProjectID, projTarget.ID)
+	}
+	if gotRoot.ParentID != nil {
+		t.Fatalf("root parent_id = %v, want nil", gotRoot.ParentID)
+	}
+	if gotRoot.Status != "todo" {
+		t.Fatalf("root status = %q, want todo fallback", gotRoot.Status)
+	}
+	if gotRoot.AssigneeID == nil || *gotRoot.AssigneeID != targetOwner.ID {
+		t.Fatalf("root assignee = %v, want target owner %q", gotRoot.AssigneeID, targetOwner.ID)
+	}
+	if gotRoot.Position != 1 {
+		t.Fatalf("root position = %d, want 1", gotRoot.Position)
+	}
+
+	gotChild, err := store.Tasks.Get(ctx, child.ID)
+	if err != nil {
+		t.Fatalf("Get child: %v", err)
+	}
+	if gotChild.ProjectID != projTarget.ID {
+		t.Fatalf("child project_id = %q, want %q", gotChild.ProjectID, projTarget.ID)
+	}
+	if gotChild.ParentID == nil || *gotChild.ParentID != movedRoot.ID {
+		t.Fatalf("child parent_id = %v, want %q", gotChild.ParentID, movedRoot.ID)
+	}
+	if gotChild.Status != "done" {
+		t.Fatalf("child status = %q, want done", gotChild.Status)
+	}
+	if gotChild.AssigneeID == nil || *gotChild.AssigneeID != preservedAssignee.ID {
+		t.Fatalf("child assignee = %v, want preserved assignee %q", gotChild.AssigneeID, preservedAssignee.ID)
+	}
+
+	gotGrandchild, err := store.Tasks.Get(ctx, grandchild.ID)
+	if err != nil {
+		t.Fatalf("Get grandchild: %v", err)
+	}
+	if gotGrandchild.ProjectID != projTarget.ID {
+		t.Fatalf("grandchild project_id = %q, want %q", gotGrandchild.ProjectID, projTarget.ID)
+	}
+	if gotGrandchild.ParentID == nil || *gotGrandchild.ParentID != child.ID {
+		t.Fatalf("grandchild parent_id = %v, want %q", gotGrandchild.ParentID, child.ID)
+	}
+	if gotGrandchild.Status != "todo" {
+		t.Fatalf("grandchild status = %q, want todo fallback", gotGrandchild.Status)
+	}
+	if gotGrandchild.AssigneeID == nil || *gotGrandchild.AssigneeID != targetOwner.ID {
+		t.Fatalf("grandchild assignee = %v, want target owner %q", gotGrandchild.AssigneeID, targetOwner.ID)
+	}
+
+	targetTopLevel, err := store.Tasks.ListChildren(ctx, projTarget.ID, nil, repo.TaskFilter{})
+	if err != nil {
+		t.Fatalf("ListChildren target top level: %v", err)
+	}
+	if len(targetTopLevel) != 2 {
+		t.Fatalf("target top-level task count = %d, want 2", len(targetTopLevel))
+	}
+	if targetTopLevel[0].ID != targetExisting.ID || targetTopLevel[0].Position != 0 {
+		t.Fatalf("target first task = (%q,%d), want (%q,0)", targetTopLevel[0].ID, targetTopLevel[0].Position, targetExisting.ID)
+	}
+	if targetTopLevel[1].ID != movedRoot.ID || targetTopLevel[1].Position != 1 {
+		t.Fatalf("target second task = (%q,%d), want (%q,1)", targetTopLevel[1].ID, targetTopLevel[1].Position, movedRoot.ID)
+	}
+
+	remainingSourceChildren, err := store.Tasks.ListChildren(ctx, projSource.ID, &oldParent.ID, repo.TaskFilter{})
+	if err != nil {
+		t.Fatalf("ListChildren source old parent: %v", err)
+	}
+	if len(remainingSourceChildren) != 1 {
+		t.Fatalf("remaining source child count = %d, want 1", len(remainingSourceChildren))
+	}
+	if remainingSourceChildren[0].ID != sourceSibling.ID || remainingSourceChildren[0].Position != 0 {
+		t.Fatalf("remaining source sibling = (%q,%d), want (%q,0)", remainingSourceChildren[0].ID, remainingSourceChildren[0].Position, sourceSibling.ID)
+	}
+}
+
 // ---- Recurrence ----
 
 func TestTasks_Create_WithRecurrence(t *testing.T) {
