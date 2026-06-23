@@ -373,6 +373,9 @@ func (h *Handler) deleteStatus(ctx context.Context, input *deleteStatusInput) (*
 	if !humautil.RequireRole(model.RoleAdmin, role) {
 		return nil, huma.Error403Forbidden("forbidden")
 	}
+	if model.IsPermanentStatus(input.Status) {
+		return nil, huma.Error409Conflict("cannot delete permanent status")
+	}
 	err = h.projects.DeleteStatus(ctx, p.ID, input.Status)
 	if err != nil {
 		if errors.Is(err, repo.ErrConflict) {

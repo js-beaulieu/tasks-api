@@ -628,7 +628,27 @@ func TestDeleteStatusExtra(t *testing.T) {
 	t.Run("DELETE /{id}/statuses/{status} success returns 204", func(t *testing.T) {
 		pr := projectRepoWithAccess(model.RoleAdmin)
 		pr.DeleteStatusFn = func(_ context.Context, _, _ string) error { return nil }
-		w := serve(newHandler(pr, &mock.TaskRepo{}), defaultUserRepo(), newRequest(http.MethodDelete, "/proj-1/statuses/done", nil))
+		w := serve(newHandler(pr, &mock.TaskRepo{}), defaultUserRepo(), newRequest(http.MethodDelete, "/proj-1/statuses/review", nil))
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want 204", w.Code)
+		}
+	})
+
+	t.Run("DELETE /{id}/statuses/{status} permanent status returns 409", func(t *testing.T) {
+		pr := projectRepoWithAccess(model.RoleAdmin)
+		pr.DeleteStatusFn = func(_ context.Context, _, _ string) error { return nil }
+		for _, s := range []string{"todo", "in_progress", "done"} {
+			w := serve(newHandler(pr, &mock.TaskRepo{}), defaultUserRepo(), newRequest(http.MethodDelete, "/proj-1/statuses/"+s, nil))
+			if w.Code != http.StatusConflict {
+				t.Fatalf("DELETE %s: status = %d, want 409", s, w.Code)
+			}
+		}
+	})
+
+	t.Run("DELETE /{id}/statuses/{status} cancelled (non-permanent) is allowed", func(t *testing.T) {
+		pr := projectRepoWithAccess(model.RoleAdmin)
+		pr.DeleteStatusFn = func(_ context.Context, _, _ string) error { return nil }
+		w := serve(newHandler(pr, &mock.TaskRepo{}), defaultUserRepo(), newRequest(http.MethodDelete, "/proj-1/statuses/cancelled", nil))
 		if w.Code != http.StatusNoContent {
 			t.Fatalf("status = %d, want 204", w.Code)
 		}
@@ -637,7 +657,7 @@ func TestDeleteStatusExtra(t *testing.T) {
 	t.Run("DELETE /{id}/statuses/{status} internal error returns 500", func(t *testing.T) {
 		pr := projectRepoWithAccess(model.RoleAdmin)
 		pr.DeleteStatusFn = func(_ context.Context, _, _ string) error { return errors.New("db error") }
-		w := serve(newHandler(pr, &mock.TaskRepo{}), defaultUserRepo(), newRequest(http.MethodDelete, "/proj-1/statuses/done", nil))
+		w := serve(newHandler(pr, &mock.TaskRepo{}), defaultUserRepo(), newRequest(http.MethodDelete, "/proj-1/statuses/review", nil))
 		if w.Code != http.StatusInternalServerError {
 			t.Fatalf("status = %d, want 500", w.Code)
 		}

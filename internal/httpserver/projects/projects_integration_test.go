@@ -644,6 +644,33 @@ func TestProjectsIntegration_DeleteStatus(t *testing.T) {
 			t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusForbidden)
 		}
 	})
+
+	t.Run("permanent status cannot be deleted", func(t *testing.T) {
+		p := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: owner.ID})
+		for _, s := range []string{"todo", "in_progress", "done"} {
+			res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodDelete, Path: statusPath(p.ID, s), Body: nil, UserID: owner.ID})
+			if res.StatusCode != http.StatusConflict {
+				t.Fatalf("DELETE %s: status = %d, want %d", s, res.StatusCode, http.StatusConflict)
+			}
+		}
+		statuses, _ := env.Store.Projects.ListStatuses(context.Background(), p.ID)
+		for _, s := range []string{"todo", "in_progress", "done"} {
+			if findStatus(statuses, s) == nil {
+				t.Fatalf("permanent status %q was deleted", s)
+			}
+		}
+	})
+
+	t.Run("cancelled (non-permanent) can be deleted when unused", func(t *testing.T) {
+		p := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: owner.ID})
+		res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodDelete, Path: statusPath(p.ID, "cancelled"), Body: nil, UserID: owner.ID})
+		assertNoContent(t, res)
+
+		statuses, _ := env.Store.Projects.ListStatuses(context.Background(), p.ID)
+		if findStatus(statuses, "cancelled") != nil {
+			t.Fatal("cancelled status should be deleted")
+		}
+	})
 }
 
 func containsStr(ss []string, s string) bool {

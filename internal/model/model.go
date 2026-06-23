@@ -56,3 +56,16 @@ const (
 )
 
 var DefaultStatuses = []string{"todo", "in_progress", "done", "cancelled"}
+
+// PermanentStatuses cannot be deleted from a project.
+// "cancelled" is a default but not permanent — admins can remove it.
+var PermanentStatuses = []string{"todo", "in_progress", "done"}
+
+func IsPermanentStatus(status string) bool {
+	for _, s := range PermanentStatuses {
+		if s == status {
+			return true
+		}
+	}
+	return false
+}
