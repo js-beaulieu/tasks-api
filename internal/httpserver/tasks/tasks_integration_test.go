@@ -208,6 +208,73 @@ func TestTasksIntegration_Patch_CrossProjectMoveWithModifyOnBoth(t *testing.T) {
 	}
 }
 
+func TestTasksIntegration_Patch_CrossProjectMoveMovesSubtreeAndReturnsFallbacks(t *testing.T) {
+	env := httptestutil.NewEnv(t)
+	modifier := env.User
+	targetOwner := seed.User(t, env.Store, seed.UserInput{ID: "target-owner", Name: "Target Owner", Email: "target@example.com"})
+	preservedAssignee := seed.User(t, env.Store, seed.UserInput{ID: "member-keep", Name: "Keep Member", Email: "keep@example.com"})
+	fallbackAssignee := seed.User(t, env.Store, seed.UserInput{ID: "member-drop", Name: "Drop Member", Email: "drop@example.com"})
+
+	projectA := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: modifier.ID, Name: "A", AdditionalStatuses: []string{"review"}})
+	projectB := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: targetOwner.ID, Name: "B"})
+	if err := env.Store.Projects.AddMember(context.Background(), &model.ProjectMember{ProjectID: projectB.ID, UserID: modifier.ID, Role: model.RoleModify}); err != nil {
+		t.Fatalf("AddMember modifier target project: %v", err)
+	}
+	if err := env.Store.Projects.AddMember(context.Background(), &model.ProjectMember{ProjectID: projectB.ID, UserID: preservedAssignee.ID, Role: model.RoleModify}); err != nil {
+		t.Fatalf("AddMember preserved assignee target project: %v", err)
+	}
+
+	root := seed.Task(t, env.Store, seed.TaskInput{
+		ProjectID:  projectA.ID,
+		OwnerID:    modifier.ID,
+		Status:     "review",
+		AssigneeID: &fallbackAssignee.ID,
+	})
+	child := seed.Task(t, env.Store, seed.TaskInput{
+		ProjectID:  projectA.ID,
+		ParentID:   &root.ID,
+		OwnerID:    modifier.ID,
+		Status:     "done",
+		AssigneeID: &preservedAssignee.ID,
+	})
+
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: "/tasks/" + root.ID, Body: map[string]any{
+		"project_id": projectB.ID,
+	}, UserID: modifier.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
+
+	var got model.Task
+	httptestutil.Decode(t, res, &got)
+	if got.ProjectID != projectB.ID {
+		t.Fatalf("project_id = %q, want %q", got.ProjectID, projectB.ID)
+	}
+	if got.ParentID != nil {
+		t.Fatalf("parent_id = %v, want nil", got.ParentID)
+	}
+	if got.Status != "todo" {
+		t.Fatalf("status = %q, want todo fallback", got.Status)
+	}
+	if got.AssigneeID == nil || *got.AssigneeID != targetOwner.ID {
+		t.Fatalf("assignee_id = %v, want target owner %q", got.AssigneeID, targetOwner.ID)
+	}
+
+	gotChild, err := env.Store.Tasks.Get(context.Background(), child.ID)
+	if err != nil {
+		t.Fatalf("Get child from DB: %v", err)
+	}
+	if gotChild.ProjectID != projectB.ID {
+		t.Fatalf("child project_id = %q, want %q", gotChild.ProjectID, projectB.ID)
+	}
+	if gotChild.ParentID == nil || *gotChild.ParentID != root.ID {
+		t.Fatalf("child parent_id = %v, want %q", gotChild.ParentID, root.ID)
+	}
+	if gotChild.AssigneeID == nil || *gotChild.AssigneeID != preservedAssignee.ID {
+		t.Fatalf("child assignee_id = %v, want preserved assignee %q", gotChild.AssigneeID, preservedAssignee.ID)
+	}
+}
+
 func TestTasksIntegration_Patch_CrossProjectMoveForbiddenWithoutTargetModify(t *testing.T) {
 	env := httptestutil.NewEnv(t)
 	projectA := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID, Name: "A"})

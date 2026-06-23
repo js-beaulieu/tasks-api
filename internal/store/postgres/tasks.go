@@ -175,9 +175,6 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 	if targetProjectID == "" {
 		targetProjectID = cur.ProjectID
 	}
-	if err := validateStatus(ctx, tx, targetProjectID, t.Status); err != nil {
-		return err
-	}
 
 	// Determine target status (defaults to current if not changed)
 	targetStatus := t.Status
@@ -187,6 +184,23 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 
 	// Determine whether this is a move (project or parent changed) or a reorder within status
 	newParentID := t.ParentID
+	crossProjectMove := targetProjectID != cur.ProjectID
+	var moveCtx *projectMoveContext
+	if crossProjectMove {
+		newParentID = nil
+		moveCtx, err = loadProjectMoveContext(ctx, tx, targetProjectID)
+		if err != nil {
+			return err
+		}
+		targetStatus = moveCtx.resolveStatus(targetStatus)
+		t.AssigneeID = moveCtx.resolveAssignee(t.AssigneeID)
+		t.ParentID = nil
+	}
+	if err := validateStatus(ctx, tx, targetProjectID, targetStatus); err != nil {
+		return err
+	}
+	t.Status = targetStatus
+	t.ProjectID = targetProjectID
 	isMove := t.ProjectID != cur.ProjectID || !parentIDsEqual(newParentID, cur.ParentID)
 	statusChanged := targetStatus != curStatus
 
@@ -287,6 +301,12 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 	query := "UPDATE tasks SET " + strings.Join(setClauses, ", ") + " WHERE id = ?"
 	if _, err = tx.ExecContext(ctx, bind(query), args...); err != nil {
 		return fmt.Errorf("update task: %w", err)
+	}
+
+	if crossProjectMove {
+		if err := moveDescendantsToProject(ctx, tx, t.ID, targetProjectID, *moveCtx); err != nil {
+			return err
+		}
 	}
 
 	// After a move or status change, compact the old group to close the gap.
@@ -522,15 +542,183 @@ func validateStatus(ctx context.Context, tx *sql.Tx, projectID, status string) e
 }
 
 func validateMove(ctx context.Context, tx *sql.Tx, taskID string, cur model.Task, targetProjectID string, newParentID *string) error {
-	if targetProjectID != cur.ProjectID {
-		if err := ensureTaskIsLeaf(ctx, tx, taskID); err != nil {
-			return err
-		}
-	}
 	if err := checkCycle(ctx, tx, taskID, newParentID); err != nil {
 		return err
 	}
 	return validateMoveParent(ctx, tx, targetProjectID, newParentID)
+}
+
+type projectMoveContext struct {
+	firstStatus string
+	ownerID     string
+	statuses    map[string]struct{}
+	members     map[string]struct{}
+}
+
+func (c projectMoveContext) resolveStatus(status string) string {
+	if _, ok := c.statuses[status]; ok {
+		return status
+	}
+	return c.firstStatus
+}
+
+func (c projectMoveContext) resolveAssignee(assigneeID *string) *string {
+	if assigneeID != nil {
+		if _, ok := c.members[*assigneeID]; ok {
+			return assigneeID
+		}
+	}
+	ownerID := c.ownerID
+	return &ownerID
+}
+
+func loadProjectMoveContext(ctx context.Context, tx *sql.Tx, projectID string) (*projectMoveContext, error) {
+	ctxData := &projectMoveContext{
+		statuses: map[string]struct{}{},
+		members:  map[string]struct{}{},
+	}
+
+	rows, err := tx.QueryContext(ctx,
+		bind(`SELECT status FROM project_statuses WHERE project_id = ? ORDER BY position`),
+		projectID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("load target statuses: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var status string
+		if err := rows.Scan(&status); err != nil {
+			return nil, fmt.Errorf("scan target status: %w", err)
+		}
+		if ctxData.firstStatus == "" {
+			ctxData.firstStatus = status
+		}
+		ctxData.statuses[status] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate target statuses: %w", err)
+	}
+	if ctxData.firstStatus == "" {
+		return nil, repo.ErrConflict
+	}
+
+	if err := tx.QueryRowContext(ctx,
+		bind(`SELECT owner_id FROM projects WHERE id = ?`),
+		projectID,
+	).Scan(&ctxData.ownerID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, repo.ErrNotFound
+		}
+		return nil, fmt.Errorf("load target owner: %w", err)
+	}
+	ctxData.members[ctxData.ownerID] = struct{}{}
+
+	memberRows, err := tx.QueryContext(ctx,
+		bind(`SELECT user_id FROM project_members WHERE project_id = ?`),
+		projectID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("load target members: %w", err)
+	}
+	defer memberRows.Close()
+
+	for memberRows.Next() {
+		var userID string
+		if err := memberRows.Scan(&userID); err != nil {
+			return nil, fmt.Errorf("scan target member: %w", err)
+		}
+		ctxData.members[userID] = struct{}{}
+	}
+	if err := memberRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate target members: %w", err)
+	}
+
+	return ctxData, nil
+}
+
+func moveDescendantsToProject(ctx context.Context, tx *sql.Tx, taskID, targetProjectID string, moveCtx projectMoveContext) error {
+	type siblingGroup struct {
+		parentID string
+		status   string
+	}
+	type descendantTask struct {
+		id         string
+		parentID   string
+		status     string
+		assigneeID *string
+	}
+
+	rows, err := tx.QueryContext(ctx, bind(`
+		WITH RECURSIVE descendants(id, parent_id, status, assignee_id) AS (
+			SELECT id, parent_id, status, assignee_id FROM tasks WHERE parent_id = ?
+			UNION ALL
+			SELECT t.id, t.parent_id, t.status, t.assignee_id
+			FROM tasks t
+			JOIN descendants d ON t.parent_id = d.id
+		)
+		SELECT id, parent_id, status, assignee_id FROM descendants`), taskID)
+	if err != nil {
+		return fmt.Errorf("load descendants: %w", err)
+	}
+	defer rows.Close()
+
+	var descendants []descendantTask
+	seenGroups := map[siblingGroup]struct{}{}
+	var groups []siblingGroup
+	for rows.Next() {
+		var descendantID string
+		var parentID sql.NullString
+		var status string
+		var assigneeID sql.NullString
+		if err := rows.Scan(&descendantID, &parentID, &status, &assigneeID); err != nil {
+			return fmt.Errorf("scan descendant: %w", err)
+		}
+		var currentAssignee *string
+		if assigneeID.Valid {
+			currentAssignee = &assigneeID.String
+		}
+		descendants = append(descendants, descendantTask{
+			id:         descendantID,
+			parentID:   parentID.String,
+			status:     status,
+			assigneeID: currentAssignee,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate descendants: %w", err)
+	}
+
+	for _, descendant := range descendants {
+		resolvedStatus := moveCtx.resolveStatus(descendant.status)
+		resolvedAssignee := moveCtx.resolveAssignee(descendant.assigneeID)
+		var sqlAssignee any
+		if resolvedAssignee != nil {
+			sqlAssignee = *resolvedAssignee
+		}
+		if _, err := tx.ExecContext(ctx,
+			bind(`UPDATE tasks SET project_id = ?, status = ?, assignee_id = ?, updated_at = NOW() WHERE id = ?`),
+			targetProjectID, resolvedStatus, sqlAssignee, descendant.id,
+		); err != nil {
+			return fmt.Errorf("move descendant task: %w", err)
+		}
+
+		group := siblingGroup{parentID: descendant.parentID, status: resolvedStatus}
+		if _, ok := seenGroups[group]; !ok {
+			seenGroups[group] = struct{}{}
+			groups = append(groups, group)
+		}
+	}
+
+	for _, group := range groups {
+		parentID := group.parentID
+		if err := compactPositions(ctx, tx, targetProjectID, &parentID, group.status); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func makeRoom(ctx context.Context, tx *sql.Tx, taskID string, cur model.Task, targetProjectID string, newParentID *string, newStatus string, newPosition int, isMove bool) error {
@@ -582,21 +770,6 @@ func countSiblings(ctx context.Context, tx *sql.Tx, projectID string, parentID *
 		return 0, fmt.Errorf("count siblings: %w", err)
 	}
 	return count, nil
-}
-
-func ensureTaskIsLeaf(ctx context.Context, tx *sql.Tx, taskID string) error {
-	var hasChildren bool
-	err := tx.QueryRowContext(ctx,
-		bind(`SELECT EXISTS (SELECT 1 FROM tasks WHERE parent_id = ?)`),
-		taskID,
-	).Scan(&hasChildren)
-	if err != nil {
-		return fmt.Errorf("check children: %w", err)
-	}
-	if hasChildren {
-		return repo.ErrConflict
-	}
-	return nil
 }
 
 func validateMoveParent(ctx context.Context, tx *sql.Tx, targetProjectID string, newParentID *string) error {
