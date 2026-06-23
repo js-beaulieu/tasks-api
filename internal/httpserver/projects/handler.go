@@ -352,6 +352,9 @@ func (h *Handler) addStatus(ctx context.Context, input *addStatusInput) (*status
 		return nil, huma.Error422UnprocessableEntity("status is required")
 	}
 	if err := h.projects.AddStatus(ctx, p.ID, input.Body.Status); err != nil {
+		if errors.Is(err, repo.ErrConflict) {
+			return nil, huma.Error409Conflict("status already exists")
+		}
 		return nil, huma.Error500InternalServerError("internal error")
 	}
 	return &statusOutput{Status: http.StatusCreated, Body: map[string]string{"project_id": p.ID, "status": input.Body.Status}}, nil

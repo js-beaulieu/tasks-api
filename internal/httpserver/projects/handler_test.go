@@ -613,6 +613,15 @@ func TestAddStatus(t *testing.T) {
 			t.Fatalf("status = %d, want 500", w.Code)
 		}
 	})
+
+	t.Run("POST /{id}/statuses duplicate returns 409", func(t *testing.T) {
+		pr := projectRepoWithAccess(model.RoleAdmin)
+		pr.AddStatusFn = func(_ context.Context, _, _ string) error { return repo.ErrConflict }
+		w := serve(newHandler(pr, &mock.TaskRepo{}), defaultUserRepo(), newRequest(http.MethodPost, "/proj-1/statuses", map[string]any{"status": "todo"}))
+		if w.Code != http.StatusConflict {
+			t.Fatalf("status = %d, want 409", w.Code)
+		}
+	})
 }
 
 func TestDeleteStatusExtra(t *testing.T) {
