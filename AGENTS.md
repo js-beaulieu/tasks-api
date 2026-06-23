@@ -54,7 +54,7 @@ Seeded on `CreateProject`: `todo`, `in_progress`, `done`, `cancelled`. Task stat
 
 ### Key Constraints
 
-- Cross-project move of parent tasks with children returns 409 (blocked until subtree move is supported).
+- Cross-project moves carry the full task subtree. The moved root task is detached to top-level in the target project, descendants keep their parent relationships, statuses fall back to the target project's first status when needed, and assignees fall back to the target project owner when they are not valid there.
 - No bulk reorder endpoint — deferred past MVP.
 - No task/project text search — deferred past MVP.
 - Project has `assignee_id` but the web app ignores it for MVP.
