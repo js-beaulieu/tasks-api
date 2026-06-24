@@ -55,16 +55,6 @@ const (
 	RoleAdmin  = "admin"
 )
 
-var DefaultStatuses = []string{"todo", "in_progress", "done"}
-
-// PermanentStatuses cannot be deleted from a project.
 var PermanentStatuses = []string{"todo", "in_progress", "done"}
 
-func IsPermanentStatus(status string) bool {
-	for _, s := range PermanentStatuses {
-		if s == status {
-			return true
-		}
-	}
-	return false
-}
+var DefaultStatuses = append([]string{}, PermanentStatuses...)

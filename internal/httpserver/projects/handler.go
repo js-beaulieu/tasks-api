@@ -15,6 +15,15 @@ import (
 	"github.com/js-beaulieu/tasks-api/internal/repo"
 )
 
+func isPermanentStatus(status string) bool {
+	for _, s := range model.PermanentStatuses {
+		if s == status {
+			return true
+		}
+	}
+	return false
+}
+
 type Handler struct {
 	projects repo.ProjectRepo
 	tasks    repo.TaskRepo
@@ -373,7 +382,7 @@ func (h *Handler) deleteStatus(ctx context.Context, input *deleteStatusInput) (*
 	if !humautil.RequireRole(model.RoleAdmin, role) {
 		return nil, huma.Error403Forbidden("forbidden")
 	}
-	if model.IsPermanentStatus(input.Status) {
+	if isPermanentStatus(input.Status) {
 		return nil, huma.Error409Conflict("cannot delete permanent status")
 	}
 	err = h.projects.DeleteStatus(ctx, p.ID, input.Status)
