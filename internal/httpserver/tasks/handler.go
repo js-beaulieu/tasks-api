@@ -34,27 +34,6 @@ func RegisterRoutes(api huma.API, projects repo.ProjectRepo, tasks repo.TaskRepo
 	huma.Get(group, "/{taskID}/tags", h.listTags)
 	huma.Post(group, "/{taskID}/tags", h.addTag)
 	huma.Delete(group, "/{taskID}/tags/{tag}", h.deleteTag)
-
-	// Make the "next" field in the update response schema nullable.
-	schema := api.OpenAPI().Components.Schemas.SchemaFromRef("#/components/schemas/updateTaskResp")
-	if schema != nil && schema.Properties != nil && schema.Properties["next"] != nil {
-		taskRef := schema.Properties["next"].Ref
-		if taskRef != "" {
-			schema.Properties["next"] = &huma.Schema{
-				AnyOf: []*huma.Schema{
-					{Ref: taskRef},
-					{Type: "null"},
-				},
-			}
-			var required []string
-			for _, name := range schema.Required {
-				if name != "next" {
-					required = append(required, name)
-				}
-			}
-			schema.Required = required
-		}
-	}
 }
 
 func (h *Handler) loadTask(ctx context.Context, taskID string) (*model.Task, string, error) {
@@ -132,13 +111,9 @@ type updateTaskInput struct {
 	Body   updateTaskBody
 }
 
-type updateTaskResp struct {
-	Task *model.Task `json:"task"`
-	Next *model.Task `json:"next"`
-}
-
 type updateTaskOutput struct {
-	Body updateTaskResp
+	NextOccurrenceID string `header:"X-Next-Occurrence-Id"`
+	Body             *model.Task
 }
 
 func (h *Handler) update(ctx context.Context, input *updateTaskInput) (*updateTaskOutput, error) {
@@ -191,14 +166,22 @@ func (h *Handler) update(ctx context.Context, input *updateTaskInput) (*updateTa
 		}
 		t.Recurrence = input.Body.Recurrence.Value
 	}
-	updated, next, err := h.tasks.Update(ctx, t)
+	// Pre-validation: recurring task being marked done must have a due_date.
+	if t.Status == "done" && t.Recurrence != nil && *t.Recurrence != "" && t.DueDate == nil {
+		return nil, huma.Error409Conflict("recurring task requires due_date to complete")
+	}
+	updated, nextID, err := h.tasks.Update(ctx, t)
 	if err != nil {
 		if errors.Is(err, repo.ErrConflict) {
 			return nil, huma.Error409Conflict("invalid status or missing due_date for recurring task")
 		}
 		return nil, huma.Error500InternalServerError("internal error")
 	}
-	return &updateTaskOutput{Body: updateTaskResp{Task: updated, Next: next}}, nil
+	out := &updateTaskOutput{Body: updated}
+	if nextID != nil {
+		out.NextOccurrenceID = *nextID
+	}
+	return out, nil
 }
 
 func (h *Handler) delete(ctx context.Context, input *taskInput) (*struct{}, error) {

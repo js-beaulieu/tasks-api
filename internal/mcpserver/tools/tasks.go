@@ -158,8 +158,8 @@ type updateTaskInput struct {
 
 type updateTaskResult struct {
 	*model.Task
-	Tags []string    `json:"tags"`
-	Next *model.Task `json:"next,omitempty"`
+	Tags             []string `json:"tags"`
+	NextOccurrenceID *string  `json:"next_occurrence_id,omitempty"`
 }
 
 func UpdateTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo, tagsRepo repo.TagRepo) mcp.ToolHandlerFor[updateTaskInput, *updateTaskResult] {
@@ -203,7 +203,7 @@ func UpdateTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo, tagsR
 		if in.ProjectID != nil {
 			t.ProjectID = *in.ProjectID
 		}
-		updated, next, err := tasks.Update(ctx, t)
+		updated, nextID, err := tasks.Update(ctx, t)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -221,7 +221,7 @@ func UpdateTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo, tagsR
 		if err != nil {
 			return nil, nil, err
 		}
-		return nil, &updateTaskResult{Task: updated, Tags: tags, Next: next}, nil
+		return nil, &updateTaskResult{Task: updated, Tags: tags, NextOccurrenceID: nextID}, nil
 	}
 }
 

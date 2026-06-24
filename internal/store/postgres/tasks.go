@@ -145,7 +145,7 @@ func (s *taskStore) Create(ctx context.Context, t *model.Task) error {
 // Position strategy: always normalize first, then shift, then write, then
 // compact again. This guarantees correctness regardless of whether the
 // frontend sends contiguous or non-contiguous position values.
-func (s *taskStore) Update(ctx context.Context, t *model.Task) (*model.Task, *model.Task, error) {
+func (s *taskStore) Update(ctx context.Context, t *model.Task) (*model.Task, *string, error) {
 	logger.FromCtx(ctx).Debug("updating task", "id", t.ID)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -317,8 +317,8 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) (*model.Task, *mo
 	}
 
 	// If the task was just moved to "done" status and is recurring with a due_date,
-	// spawn the next occurrence.
-	var nextTask *model.Task
+	// spawn the next occurrence and return its ID.
+	var nextOccurrenceID *string
 	if statusChanged && targetStatus == "done" && t.Recurrence != nil && *t.Recurrence != "" {
 		if t.DueDate == nil {
 			if err := tx.Rollback(); err != nil {
@@ -352,7 +352,7 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) (*model.Task, *mo
 
 		// Build the next occurrence task.
 		newID := uuid.New().String()
-		nextTask = &model.Task{
+		nextTask := &model.Task{
 			ID:          newID,
 			ProjectID:   t.ProjectID,
 			Name:        t.Name,
@@ -386,6 +386,8 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) (*model.Task, *mo
 		); err != nil {
 			return nil, nil, fmt.Errorf("copy tags: %w", err)
 		}
+
+		nextOccurrenceID = &newID
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -393,24 +395,8 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) (*model.Task, *mo
 		return nil, nil, err
 	}
 
-	// If we spawned a next occurrence, re-fetch it so timestamps are populated.
-	if nextTask != nil {
-		createdRows, err := s.db.QueryContext(ctx,
-			bind(`SELECT id, project_id, parent_id, name, description,
-			        status, due_date, owner_id, assignee_id, position, recurrence, created_at, updated_at
-			 FROM tasks WHERE id = ?`), nextTask.ID)
-		if err == nil {
-			defer createdRows.Close()
-			if createdRows.Next() {
-				if fetched, ferr := scanTask(createdRows); ferr == nil {
-					nextTask = fetched
-				}
-			}
-		}
-	}
-
 	logger.FromCtx(ctx).Debug("updated task", "id", t.ID)
-	return t, nextTask, nil
+	return t, nextOccurrenceID, nil
 }
 
 // Delete removes a task by ID. The DB CASCADE removes subtasks and tags.

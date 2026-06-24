@@ -41,9 +41,9 @@ type TaskRepo interface {
 	Get(ctx context.Context, id string) (*model.Task, error)
 	Create(ctx context.Context, t *model.Task) error
 	// Update modifies a task. If the status changes to "done" and the task is
-	// recurring with a due_date, it also creates and returns the next occurrence.
-	// nextTask is nil when no recurrence is applicable.
-	Update(ctx context.Context, t *model.Task) (*model.Task, *model.Task, error)
+	// recurring with a due_date, it also creates the next occurrence and returns
+	// its ID via nextOccurrenceID (nil when no recurrence is applicable).
+	Update(ctx context.Context, t *model.Task) (*model.Task, *string, error)
 	Delete(ctx context.Context, id string) error
 }
 

@@ -13,7 +13,7 @@ type TaskRepo struct {
 	ListChildrenFn func(ctx context.Context, projectID string, parentID *string, f repo.TaskFilter) ([]*model.Task, error)
 	GetFn          func(ctx context.Context, id string) (*model.Task, error)
 	CreateFn       func(ctx context.Context, t *model.Task) error
-	UpdateFn       func(ctx context.Context, t *model.Task) (*model.Task, *model.Task, error)
+	UpdateFn       func(ctx context.Context, t *model.Task) (*model.Task, *string, error)
 	DeleteFn       func(ctx context.Context, id string) error
 }
 
@@ -29,7 +29,7 @@ func (m *TaskRepo) Create(ctx context.Context, t *model.Task) error {
 	return m.CreateFn(ctx, t)
 }
 
-func (m *TaskRepo) Update(ctx context.Context, t *model.Task) (*model.Task, *model.Task, error) {
+func (m *TaskRepo) Update(ctx context.Context, t *model.Task) (*model.Task, *string, error) {
 	return m.UpdateFn(ctx, t)
 }
 

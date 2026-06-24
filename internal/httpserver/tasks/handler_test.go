@@ -63,6 +63,9 @@ func taskRepoFound() *mock.TaskRepo {
 		ListChildrenFn: func(_ context.Context, _ string, _ *string, _ repo.TaskFilter) ([]*model.Task, error) {
 			return nil, nil
 		},
+		UpdateFn: func(_ context.Context, t *model.Task) (*model.Task, *string, error) {
+			return t, nil, nil
+		},
 	}
 }
 
@@ -126,7 +129,7 @@ func TestGetTask(t *testing.T) {
 func TestPatchTask(t *testing.T) {
 	t.Run("PATCH with read role returns 403", func(t *testing.T) {
 		tr := taskRepoFound()
-		tr.UpdateFn = func(_ context.Context, _ *model.Task) (*model.Task, *model.Task, error) { return nil, nil, nil }
+		tr.UpdateFn = func(_ context.Context, _ *model.Task) (*model.Task, *string, error) { return nil, nil, nil }
 		handler := newHandler(
 			projectRepoWithRole(model.RoleRead),
 			tr,
@@ -140,7 +143,7 @@ func TestPatchTask(t *testing.T) {
 
 	t.Run("PATCH cross-project move without target access returns 403", func(t *testing.T) {
 		tr := taskRepoFound()
-		tr.UpdateFn = func(_ context.Context, _ *model.Task) (*model.Task, *model.Task, error) { return nil, nil, nil }
+		tr.UpdateFn = func(_ context.Context, _ *model.Task) (*model.Task, *string, error) { return nil, nil, nil }
 		// modify on proj-1 (source), no access on proj-2 (target)
 		pr := &mock.ProjectRepo{
 			GetMemberRoleFn: func(_ context.Context, projectID, _ string) (string, error) {
@@ -162,7 +165,7 @@ func TestPatchTask(t *testing.T) {
 	t.Run("PATCH with position change calls Update with new position", func(t *testing.T) {
 		var captured *model.Task
 		tr := taskRepoFound()
-		tr.UpdateFn = func(_ context.Context, t *model.Task) (*model.Task, *model.Task, error) {
+		tr.UpdateFn = func(_ context.Context, t *model.Task) (*model.Task, *string, error) {
 			captured = t
 			return t, nil, nil
 		}
@@ -184,7 +187,7 @@ func TestPatchTask(t *testing.T) {
 	t.Run(`PATCH with "parent_id": null clears parent`, func(t *testing.T) {
 		var captured *model.Task
 		tr := taskRepoFound()
-		tr.UpdateFn = func(_ context.Context, t *model.Task) (*model.Task, *model.Task, error) {
+		tr.UpdateFn = func(_ context.Context, t *model.Task) (*model.Task, *string, error) {
 			captured = t
 			return t, nil, nil
 		}
@@ -211,7 +214,7 @@ func TestPatchTask(t *testing.T) {
 	t.Run("PATCH omitting parent_id leaves parent unchanged", func(t *testing.T) {
 		var captured *model.Task
 		tr := taskRepoFound() // returns task with ParentID = &"old-parent"
-		tr.UpdateFn = func(_ context.Context, t *model.Task) (*model.Task, *model.Task, error) {
+		tr.UpdateFn = func(_ context.Context, t *model.Task) (*model.Task, *string, error) {
 			captured = t
 			return t, nil, nil
 		}
@@ -232,7 +235,7 @@ func TestPatchTask(t *testing.T) {
 
 	t.Run("PATCH with invalid status returns 409", func(t *testing.T) {
 		tr := taskRepoFound()
-		tr.UpdateFn = func(_ context.Context, _ *model.Task) (*model.Task, *model.Task, error) {
+		tr.UpdateFn = func(_ context.Context, _ *model.Task) (*model.Task, *string, error) {
 			return nil, nil, repo.ErrConflict
 		}
 		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
@@ -357,7 +360,7 @@ func TestPatchTaskExtra(t *testing.T) {
 
 	t.Run("PATCH /{id} repo internal error returns 500", func(t *testing.T) {
 		tr := taskRepoFound()
-		tr.UpdateFn = func(_ context.Context, _ *model.Task) (*model.Task, *model.Task, error) {
+		tr.UpdateFn = func(_ context.Context, _ *model.Task) (*model.Task, *string, error) {
 			return nil, nil, errors.New("db error")
 		}
 		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
@@ -533,7 +536,7 @@ func TestPatchTaskRecurrence(t *testing.T) {
 	t.Run(`PATCH with "recurrence": "FREQ=DAILY" sets recurrence`, func(t *testing.T) {
 		var captured *model.Task
 		tr := taskRepoFound()
-		tr.UpdateFn = func(_ context.Context, t *model.Task) (*model.Task, *model.Task, error) {
+		tr.UpdateFn = func(_ context.Context, t *model.Task) (*model.Task, *string, error) {
 			captured = t
 			return t, nil, nil
 		}
@@ -559,7 +562,7 @@ func TestPatchTaskRecurrence(t *testing.T) {
 				t.Recurrence = &r
 				return t, nil
 			},
-			UpdateFn: func(_ context.Context, t *model.Task) (*model.Task, *model.Task, error) {
+			UpdateFn: func(_ context.Context, t *model.Task) (*model.Task, *string, error) {
 				captured = t
 				return t, nil, nil
 			},
@@ -586,7 +589,7 @@ func TestPatchTaskRecurrence(t *testing.T) {
 				t.Recurrence = &r
 				return t, nil
 			},
-			UpdateFn: func(_ context.Context, t *model.Task) (*model.Task, *model.Task, error) {
+			UpdateFn: func(_ context.Context, t *model.Task) (*model.Task, *string, error) {
 				captured = t
 				return t, nil, nil
 			},
@@ -606,7 +609,7 @@ func TestPatchTaskRecurrence(t *testing.T) {
 
 	t.Run("PATCH with invalid recurrence returns 422", func(t *testing.T) {
 		tr := taskRepoFound()
-		tr.UpdateFn = func(_ context.Context, _ *model.Task) (*model.Task, *model.Task, error) { return nil, nil, nil }
+		tr.UpdateFn = func(_ context.Context, _ *model.Task) (*model.Task, *string, error) { return nil, nil, nil }
 		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
 		w := serve(handler, rawRequest(http.MethodPatch, "/task-1", `{"recurrence":"BOGUS"}`))
 		if w.Code != http.StatusUnprocessableEntity {
@@ -616,7 +619,7 @@ func TestPatchTaskRecurrence(t *testing.T) {
 
 	t.Run("PATCH with recurrence but no due_date returns 422", func(t *testing.T) {
 		tr := taskRepoFound()
-		tr.UpdateFn = func(_ context.Context, _ *model.Task) (*model.Task, *model.Task, error) { return nil, nil, nil }
+		tr.UpdateFn = func(_ context.Context, _ *model.Task) (*model.Task, *string, error) { return nil, nil, nil }
 		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
 		w := serve(handler, rawRequest(http.MethodPatch, "/task-1", `{"recurrence":"FREQ=DAILY"}`))
 		if w.Code != http.StatusUnprocessableEntity {
@@ -627,7 +630,7 @@ func TestPatchTaskRecurrence(t *testing.T) {
 	t.Run("PATCH with recurrence and due_date in same request succeeds", func(t *testing.T) {
 		var captured *model.Task
 		tr := taskRepoFound()
-		tr.UpdateFn = func(_ context.Context, t *model.Task) (*model.Task, *model.Task, error) {
+		tr.UpdateFn = func(_ context.Context, t *model.Task) (*model.Task, *string, error) {
 			captured = t
 			return t, nil, nil
 		}

@@ -629,7 +629,7 @@ func TestTasks_Update_RecurringToDone_SpawnsNext(t *testing.T) {
 	}
 
 	task.Status = "done"
-	_, next, err := store.Tasks.Update(ctx, task)
+	_, nextID, err := store.Tasks.Update(ctx, task)
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -638,11 +638,14 @@ func TestTasks_Update_RecurringToDone_SpawnsNext(t *testing.T) {
 		t.Errorf("updated.Status = %q, want done", task.Status)
 	}
 
-	if next == nil {
-		t.Fatal("next task is nil, want a new occurrence")
+	if nextID == nil {
+		t.Fatal("next occurrence ID is nil, want a new occurrence ID")
 	}
-	if next.ID == task.ID {
-		t.Error("next.ID must be a new UUID, not the same as the original")
+
+	// Verify the spawned task exists and has the expected properties
+	next, err := store.Tasks.Get(ctx, *nextID)
+	if err != nil {
+		t.Fatalf("Get next occurrence: %v", err)
 	}
 	if next.DueDate == nil || *next.DueDate != "2026-04-15" {
 		t.Errorf("next.DueDate = %v, want 2026-04-15", next.DueDate)
@@ -707,15 +710,15 @@ func TestTasks_Update_NonRecurringToDone_NoNext(t *testing.T) {
 	task := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
 
 	task.Status = "done"
-	_, next, err := store.Tasks.Update(ctx, task)
+	_, nextID, err := store.Tasks.Update(ctx, task)
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 	if task.Status != "done" {
 		t.Errorf("updated.Status = %q, want done", task.Status)
 	}
-	if next != nil {
-		t.Errorf("next = %v, want nil for non-recurring task", next)
+	if nextID != nil {
+		t.Errorf("nextID = %v, want nil for non-recurring task", nextID)
 	}
 }
 

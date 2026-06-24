@@ -140,7 +140,7 @@ func TestUpdateTaskHandlerErrors(t *testing.T) {
 			GetFn: func(_ context.Context, id string) (*model.Task, error) {
 				return &model.Task{ID: id, ProjectID: "p1", Name: "T", Status: "todo", OwnerID: "u1"}, nil
 			},
-			UpdateFn: func(_ context.Context, _ *model.Task) (*model.Task, *model.Task, error) {
+			UpdateFn: func(_ context.Context, _ *model.Task) (*model.Task, *string, error) {
 				return nil, nil, errors.New("db error")
 			},
 		}
@@ -312,7 +312,7 @@ func TestUpdateTaskHandler(t *testing.T) {
 			GetFn: func(_ context.Context, _ string) (*model.Task, error) {
 				return &model.Task{ID: "t1", ProjectID: "p1", Name: "T", Status: "todo", OwnerID: "u1"}, nil
 			},
-			UpdateFn: func(_ context.Context, t *model.Task) (*model.Task, *model.Task, error) {
+			UpdateFn: func(_ context.Context, t *model.Task) (*model.Task, *string, error) {
 				updateCalled = true
 				return t, nil, nil
 			},
@@ -405,7 +405,7 @@ func TestUpdateTaskAccessControl(t *testing.T) {
 			GetFn: func(_ context.Context, id string) (*model.Task, error) {
 				return &model.Task{ID: id, ProjectID: "p1", Name: "T", Status: "todo", OwnerID: "u1"}, nil
 			},
-			UpdateFn: func(_ context.Context, t *model.Task) (*model.Task, *model.Task, error) {
+			UpdateFn: func(_ context.Context, t *model.Task) (*model.Task, *string, error) {
 				updateCalled = true
 				return t, nil, nil
 			},
@@ -434,7 +434,7 @@ func TestUpdateTaskAccessControl(t *testing.T) {
 			GetFn: func(_ context.Context, id string) (*model.Task, error) {
 				return &model.Task{ID: id, ProjectID: "p1", Name: "T", Status: "todo", OwnerID: "u1"}, nil
 			},
-			UpdateFn: func(_ context.Context, t *model.Task) (*model.Task, *model.Task, error) {
+			UpdateFn: func(_ context.Context, t *model.Task) (*model.Task, *string, error) {
 				updateCalled = true
 				return t, nil, nil
 			},
@@ -490,7 +490,7 @@ func TestUpdateTaskAccessControl(t *testing.T) {
 			GetFn: func(_ context.Context, id string) (*model.Task, error) {
 				return &model.Task{ID: id, ProjectID: "p1", Name: "T", Status: "todo", OwnerID: "u1"}, nil
 			},
-			UpdateFn: func(_ context.Context, t *model.Task) (*model.Task, *model.Task, error) {
+			UpdateFn: func(_ context.Context, t *model.Task) (*model.Task, *string, error) {
 				updateCalled = true
 				return t, nil, nil
 			},
