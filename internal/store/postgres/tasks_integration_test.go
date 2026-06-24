@@ -143,7 +143,7 @@ func TestTasks_ListChildren(t *testing.T) {
 	t.Run("status filter returns only matching tasks", func(t *testing.T) {
 		// t1 is todo; t2 is todo — update t2 to in_progress for filtering
 		t2.Status = "in_progress"
-		if err := store.Tasks.Update(ctx, t2); err != nil {
+		if _, _, err := store.Tasks.Update(ctx, t2); err != nil {
 			t.Fatalf("Update: %v", err)
 		}
 		status := "in_progress"
@@ -159,7 +159,7 @@ func TestTasks_ListChildren(t *testing.T) {
 	t.Run("assignee filter returns only matching tasks", func(t *testing.T) {
 		assignee := seed.User(t, store, seed.UserInput{ID: "u2", Name: "Bob", Email: "bob@test.com"})
 		t1.AssigneeID = &assignee.ID
-		if err := store.Tasks.Update(ctx, t1); err != nil {
+		if _, _, err := store.Tasks.Update(ctx, t1); err != nil {
 			t.Fatalf("Update: %v", err)
 		}
 		tasks, err := store.Tasks.ListChildren(ctx, proj.ID, nil, repo.TaskFilter{AssigneeID: &assignee.ID})
@@ -211,7 +211,7 @@ func TestTasks_Update_NameOnly(t *testing.T) {
 
 	originalUpdatedAt := task.UpdatedAt
 	task.Name = "Updated Name"
-	if err := store.Tasks.Update(ctx, task); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, task); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -235,7 +235,7 @@ func TestTasks_Update_InvalidStatus(t *testing.T) {
 	task := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
 
 	task.Status = "bogus"
-	err := store.Tasks.Update(ctx, task)
+	_, _, err := store.Tasks.Update(ctx, task)
 	if err != repo.ErrConflict {
 		t.Errorf("err = %v, want repo.ErrConflict for invalid status", err)
 	}
@@ -253,7 +253,7 @@ func TestTasks_Update_PositionReorderUp(t *testing.T) {
 
 	// Move t2 (pos=2) up to pos=0
 	t2.Position = 0
-	if err := store.Tasks.Update(ctx, t2); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, t2); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -292,7 +292,7 @@ func TestTasks_Update_PositionReorderDown(t *testing.T) {
 
 	// Move t0 (pos=0) down to pos=2
 	t0.Position = 2
-	if err := store.Tasks.Update(ctx, t0); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, t0); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -383,7 +383,7 @@ func TestTasks_Move_BetweenParents(t *testing.T) {
 	// Move child from parentA to parentB
 	child.ParentID = &parentB.ID
 	child.Position = 0
-	if err := store.Tasks.Update(ctx, child); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, child); err != nil {
 		t.Fatalf("Update (move): %v", err)
 	}
 
@@ -424,7 +424,7 @@ func TestTasks_Move_BetweenProjects(t *testing.T) {
 	task.ProjectID = projY.ID
 	task.ParentID = nil
 	task.Position = 0
-	if err := store.Tasks.Update(ctx, task); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, task); err != nil {
 		t.Fatalf("Update (cross-project move): %v", err)
 	}
 
@@ -492,7 +492,7 @@ func TestTasks_Move_SubtreeBetweenProjects(t *testing.T) {
 
 	movedRoot.ProjectID = projTarget.ID
 	movedRoot.Position = 1
-	if err := store.Tasks.Update(ctx, movedRoot); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, movedRoot); err != nil {
 		t.Fatalf("Update (cross-project subtree move): %v", err)
 	}
 
@@ -605,63 +605,7 @@ func TestTasks_Create_WithRecurrence(t *testing.T) {
 	}
 }
 
-func TestTasks_CompleteTask_NonRecurring(t *testing.T) {
-	_, store := testdb.Open(t)
-	ctx := context.Background()
-	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
-	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
-	task := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
-
-	completed, next, err := store.Tasks.CompleteTask(ctx, task.ID, "done")
-	if err != nil {
-		t.Fatalf("CompleteTask: %v", err)
-	}
-	if completed == nil {
-		t.Fatal("completed task is nil")
-	}
-	if completed.Status != "done" {
-		t.Errorf("completed.Status = %q, want done", completed.Status)
-	}
-	if next != nil {
-		t.Errorf("next = %v, want nil for non-recurring task", next)
-	}
-}
-
-func TestTasks_CompleteTask_RecurringNoDueDate(t *testing.T) {
-	_, store := testdb.Open(t)
-	ctx := context.Background()
-	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
-	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
-
-	rec := "FREQ=DAILY"
-	task := &model.Task{
-		ProjectID:  proj.ID,
-		Name:       "Daily Task",
-		OwnerID:    owner.ID,
-		Status:     "todo",
-		Recurrence: &rec,
-		// intentionally no DueDate
-	}
-	if err := store.Tasks.Create(ctx, task); err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-
-	_, _, err := store.Tasks.CompleteTask(ctx, task.ID, "done")
-	if err != repo.ErrConflict {
-		t.Errorf("err = %v, want repo.ErrConflict (recurring task requires due_date)", err)
-	}
-
-	// status must remain unchanged
-	got, err := store.Tasks.Get(ctx, task.ID)
-	if err != nil {
-		t.Fatalf("Get after failed complete: %v", err)
-	}
-	if got.Status != "todo" {
-		t.Errorf("status = %q after failed complete, want todo (unchanged)", got.Status)
-	}
-}
-
-func TestTasks_CompleteTask_Recurring(t *testing.T) {
+func TestTasks_Update_RecurringToDone_SpawnsNext(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
 	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
@@ -684,16 +628,14 @@ func TestTasks_CompleteTask_Recurring(t *testing.T) {
 		t.Fatalf("Add tag: %v", err)
 	}
 
-	completed, next, err := store.Tasks.CompleteTask(ctx, task.ID, "done")
+	task.Status = "done"
+	_, next, err := store.Tasks.Update(ctx, task)
 	if err != nil {
-		t.Fatalf("CompleteTask: %v", err)
+		t.Fatalf("Update: %v", err)
 	}
 
-	if completed == nil {
-		t.Fatal("completed task is nil")
-	}
-	if completed.Status != "done" {
-		t.Errorf("completed.Status = %q, want done", completed.Status)
+	if task.Status != "done" {
+		t.Errorf("updated.Status = %q, want done", task.Status)
 	}
 
 	if next == nil {
@@ -715,7 +657,6 @@ func TestTasks_CompleteTask_Recurring(t *testing.T) {
 		t.Errorf("next.Name = %q, want %q", next.Name, task.Name)
 	}
 
-	// tags must be copied to the next occurrence
 	tags, err := store.Tags.ListForTask(ctx, next.ID)
 	if err != nil {
 		t.Fatalf("ListForTask next: %v", err)
@@ -725,24 +666,56 @@ func TestTasks_CompleteTask_Recurring(t *testing.T) {
 	}
 }
 
-func TestTasks_CompleteTask_InvalidDoneStatus(t *testing.T) {
+func TestTasks_Update_RecurringToDone_NoDueDate_ReturnsConflict(t *testing.T) {
+	_, store := testdb.Open(t)
+	ctx := context.Background()
+	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
+	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
+
+	rec := "FREQ=DAILY"
+	task := &model.Task{
+		ProjectID:  proj.ID,
+		Name:       "Daily Task",
+		OwnerID:    owner.ID,
+		Status:     "todo",
+		Recurrence: &rec,
+	}
+	if err := store.Tasks.Create(ctx, task); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	task.Status = "done"
+	_, _, err := store.Tasks.Update(ctx, task)
+	if err != repo.ErrConflict {
+		t.Errorf("err = %v, want repo.ErrConflict (recurring task requires due_date)", err)
+	}
+
+	got, err := store.Tasks.Get(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("Get after failed update: %v", err)
+	}
+	if got.Status != "todo" {
+		t.Errorf("status = %q after failed update, want todo (unchanged)", got.Status)
+	}
+}
+
+func TestTasks_Update_NonRecurringToDone_NoNext(t *testing.T) {
 	_, store := testdb.Open(t)
 	ctx := context.Background()
 	owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
 	proj := seed.Project(t, store, seed.ProjectInput{OwnerID: owner.ID})
 	task := seed.Task(t, store, seed.TaskInput{ProjectID: proj.ID, OwnerID: owner.ID})
 
-	_, _, err := store.Tasks.CompleteTask(ctx, task.ID, "nonexistent_status")
-	if err != repo.ErrConflict {
-		t.Errorf("err = %v, want repo.ErrConflict (invalid done_status)", err)
-	}
-
-	got, err := store.Tasks.Get(ctx, task.ID)
+	task.Status = "done"
+	_, next, err := store.Tasks.Update(ctx, task)
 	if err != nil {
-		t.Fatalf("Get: %v", err)
+		t.Fatalf("Update: %v", err)
 	}
-	if got.Status != "todo" {
-		t.Errorf("status = %q after failed complete, want todo (unchanged)", got.Status)
+	if task.Status != "done" {
+		t.Errorf("updated.Status = %q, want done", task.Status)
+	}
+	if next != nil {
+		t.Errorf("next = %v, want nil for non-recurring task", next)
 	}
 }
 
@@ -760,7 +733,7 @@ func TestTasks_CycleGuard(t *testing.T) {
 	t.Run("self-reference returns ErrConflict", func(t *testing.T) {
 		orig := taskA.ParentID
 		taskA.ParentID = &taskA.ID
-		err := store.Tasks.Update(ctx, taskA)
+		_, _, err := store.Tasks.Update(ctx, taskA)
 		if err != repo.ErrConflict {
 			t.Errorf("self-ref: err = %v, want repo.ErrConflict", err)
 		}
@@ -770,7 +743,7 @@ func TestTasks_CycleGuard(t *testing.T) {
 	t.Run("descendant reference returns ErrConflict", func(t *testing.T) {
 		orig := taskA.ParentID
 		taskA.ParentID = &taskB.ID
-		err := store.Tasks.Update(ctx, taskA)
+		_, _, err := store.Tasks.Update(ctx, taskA)
 		if err != repo.ErrConflict {
 			t.Errorf("descendant-ref: err = %v, want repo.ErrConflict", err)
 		}
@@ -835,7 +808,7 @@ func TestTasks_Update_CompactionPreservesRelativeOrder(t *testing.T) {
 	// Name-only update triggers compaction without any reorder.
 	// Relative order must be preserved: 0→0, 500→1, 999→2.
 	t0.Name = "Renamed"
-	if err := store.Tasks.Update(ctx, t0); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, t0); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -861,7 +834,7 @@ func TestTasks_Update_NonContiguousReorderUp(t *testing.T) {
 
 	// Move t2 (relative index 2) up to index 0
 	t2.Position = 0
-	if err := store.Tasks.Update(ctx, t2); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, t2); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -887,7 +860,7 @@ func TestTasks_Update_NonContiguousReorderDown(t *testing.T) {
 
 	// Move t0 (relative index 0) down to index 2
 	t0.Position = 2
-	if err := store.Tasks.Update(ctx, t0); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, t0); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -910,7 +883,7 @@ func TestTasks_Update_PositionClampedTooLarge(t *testing.T) {
 
 	// Request position 999 for a 3-task list — should be clamped to 2 (last index)
 	t0.Position = 999
-	if err := store.Tasks.Update(ctx, t0); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, t0); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -932,7 +905,7 @@ func TestTasks_Update_PositionClampedNegative(t *testing.T) {
 
 	// Request position -5 — should be clamped to 0
 	t1.Position = -5
-	if err := store.Tasks.Update(ctx, t1); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, t1); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -960,7 +933,7 @@ func TestTasks_Move_NonContiguousPositions(t *testing.T) {
 	task1.ProjectID = projY.ID
 	task1.ParentID = nil
 	task1.Position = 0
-	if err := store.Tasks.Update(ctx, task1); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, task1); err != nil {
 		t.Fatalf("Update (cross-project move): %v", err)
 	}
 
@@ -987,7 +960,7 @@ func TestTasks_Update_SamePositionNoChange(t *testing.T) {
 
 	// Update t0 keeping same position — no siblings should move
 	t0.Position = 0
-	if err := store.Tasks.Update(ctx, t0); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, t0); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -1019,7 +992,7 @@ func TestTasks_Update_StatusChangeWithPosition_InsertsAtPosition(t *testing.T) {
 	// todo should become: td0=0, ip0=1, td1=2, td2=3
 	ip0.Status = "todo"
 	ip0.Position = 1
-	if err := store.Tasks.Update(ctx, ip0); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, ip0); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -1085,7 +1058,7 @@ func TestTasks_Update_StatusChangeWithPosition0_InsertsAtBeginning(t *testing.T)
 	// todo should become: [ip0_at_0, t0_at_1, t1_at_2, t2_at_3]
 	ip0.Status = "todo"
 	ip0.Position = 0
-	if err := store.Tasks.Update(ctx, ip0); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, ip0); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -1139,7 +1112,7 @@ func TestTasks_Update_StatusChangeWithoutPosition_AppendsToEnd(t *testing.T) {
 	}
 	ip0.Status = "todo"
 	ip0.Position = len(siblings) // handler does this when no position specified
-	if err := store.Tasks.Update(ctx, ip0); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, ip0); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -1194,7 +1167,7 @@ func TestTasks_Update_PositionOnly_InsertsAtPosition(t *testing.T) {
 	// Move t3 (pos=3) to position 2
 	// Expected: t0=0, t1=1, t3=2, t2=3
 	t3.Position = 2
-	if err := store.Tasks.Update(ctx, t3); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, t3); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -1222,7 +1195,7 @@ func TestTasks_Update_StatusChangeToEmptyGroup_WithPosition(t *testing.T) {
 	// Position 1 in empty group should be clamped to 0
 	t0.Status = "in_progress"
 	t0.Position = 1
-	if err := store.Tasks.Update(ctx, t0); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, t0); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -1251,7 +1224,7 @@ func TestTasks_Update_StatusChangeToEmptyGroup_WithoutPosition(t *testing.T) {
 	siblings, _ := store.Tasks.ListChildren(ctx, proj.ID, nil, repo.TaskFilter{Status: ptrStr("in_progress")})
 	t0.Status = "in_progress"
 	t0.Position = len(siblings)
-	if err := store.Tasks.Update(ctx, t0); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, t0); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -1281,7 +1254,7 @@ func TestTasks_Update_StatusChange_CompactsSourceGroup(t *testing.T) {
 	// Move t1 from todo to in_progress at position 0
 	t1.Status = "in_progress"
 	t1.Position = 0
-	if err := store.Tasks.Update(ctx, t1); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, t1); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -1323,7 +1296,7 @@ func TestTasks_Update_StatusChangeWithPosition_InsertsInMiddle(t *testing.T) {
 	// done should become: d0=0, t0=1, d1=2, d2=3
 	t0.Status = "done"
 	t0.Position = 1
-	if err := store.Tasks.Update(ctx, t0); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, t0); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -1366,7 +1339,7 @@ func TestTasks_Update_StatusChange_PositionClampedTooLarge(t *testing.T) {
 	// Move t0 to done at position 999 — should clamp to 2 (siblingCount=2, joining)
 	t0.Status = "done"
 	t0.Position = 999
-	if err := store.Tasks.Update(ctx, t0); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, t0); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -1401,7 +1374,7 @@ func TestTasks_Update_StatusChangeToEmptyGroup_PositionClampedTooLarge(t *testin
 	// Move to done (empty) at position 999 — should clamp to 0
 	t0.Status = "done"
 	t0.Position = 999
-	if err := store.Tasks.Update(ctx, t0); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, t0); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -1427,7 +1400,7 @@ func TestTasks_Update_StatusChange_PositionNegative(t *testing.T) {
 	// Move t0 to done at position -5 — should clamp to 0
 	t0.Status = "done"
 	t0.Position = -5
-	if err := store.Tasks.Update(ctx, t0); err != nil {
+	if _, _, err := store.Tasks.Update(ctx, t0); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 

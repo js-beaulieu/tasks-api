@@ -145,11 +145,11 @@ func (s *taskStore) Create(ctx context.Context, t *model.Task) error {
 // Position strategy: always normalize first, then shift, then write, then
 // compact again. This guarantees correctness regardless of whether the
 // frontend sends contiguous or non-contiguous position values.
-func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
+func (s *taskStore) Update(ctx context.Context, t *model.Task) (*model.Task, *model.Task, error) {
 	logger.FromCtx(ctx).Debug("updating task", "id", t.ID)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
+		return nil, nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -162,9 +162,9 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 	).Scan(&cur.ProjectID, &curParentID, &curStatus, &cur.Position)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return repo.ErrNotFound
+			return nil, nil, repo.ErrNotFound
 		}
-		return fmt.Errorf("load current task: %w", err)
+		return nil, nil, fmt.Errorf("load current task: %w", err)
 	}
 	if curParentID.Valid {
 		cur.ParentID = &curParentID.String
@@ -190,14 +190,14 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 		newParentID = nil
 		moveCtx, err = loadProjectMoveContext(ctx, tx, targetProjectID)
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 		targetStatus = moveCtx.resolveStatus(targetStatus)
 		t.AssigneeID = moveCtx.resolveAssignee(t.AssigneeID)
 		t.ParentID = nil
 	}
 	if err := validateStatus(ctx, tx, targetProjectID, targetStatus); err != nil {
-		return err
+		return nil, nil, err
 	}
 	t.Status = targetStatus
 	t.ProjectID = targetProjectID
@@ -209,24 +209,24 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 		taskSiblingList{projectID: cur.ProjectID, parentID: cur.ParentID, status: curStatus},
 		taskSiblingList{projectID: targetProjectID, parentID: newParentID, status: targetStatus},
 	); err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	if isMove {
 		if err := validateMove(ctx, tx, t.ID, cur, targetProjectID, newParentID); err != nil {
-			return err
+			return nil, nil, err
 		}
 	}
 
 	// Normalize positions so arithmetic operates on contiguous 0-based indices.
 	// Always compact the target status group first.
 	if err := compactPositions(ctx, tx, targetProjectID, newParentID, targetStatus); err != nil {
-		return err
+		return nil, nil, err
 	}
 	// If moving between groups, also compact the source group before the task leaves.
 	if isMove || statusChanged {
 		if err := compactPositions(ctx, tx, cur.ProjectID, cur.ParentID, curStatus); err != nil {
-			return err
+			return nil, nil, err
 		}
 	}
 
@@ -235,12 +235,12 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 		bind(`SELECT position FROM tasks WHERE id = ?`), t.ID,
 	).Scan(&cur.Position)
 	if err != nil {
-		return fmt.Errorf("reload position: %w", err)
+		return nil, nil, fmt.Errorf("reload position: %w", err)
 	}
 
 	siblingCount, err := countSiblings(ctx, tx, targetProjectID, newParentID, targetStatus)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	maxPos := siblingCount - 1
 	if isMove || statusChanged {
@@ -258,7 +258,7 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 	positionChanged := t.Position != cur.Position
 	if positionChanged || isMove || statusChanged {
 		if err := makeRoom(ctx, tx, t.ID, cur, targetProjectID, newParentID, targetStatus, t.Position, isMove || statusChanged); err != nil {
-			return err
+			return nil, nil, err
 		}
 	}
 
@@ -300,187 +300,117 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) error {
 	args = append(args, t.ID)
 	query := "UPDATE tasks SET " + strings.Join(setClauses, ", ") + " WHERE id = ?"
 	if _, err = tx.ExecContext(ctx, bind(query), args...); err != nil {
-		return fmt.Errorf("update task: %w", err)
+		return nil, nil, fmt.Errorf("update task: %w", err)
 	}
 
 	if crossProjectMove {
 		if err := moveDescendantsToProject(ctx, tx, t.ID, targetProjectID, *moveCtx); err != nil {
-			return err
+			return nil, nil, err
 		}
 	}
 
 	// After a move or status change, compact the old group to close the gap.
 	if isMove || statusChanged {
 		if err := compactPositions(ctx, tx, cur.ProjectID, cur.ParentID, curStatus); err != nil {
-			return err
+			return nil, nil, err
+		}
+	}
+
+	// If the task was just moved to "done" status and is recurring with a due_date,
+	// spawn the next occurrence.
+	var nextTask *model.Task
+	if statusChanged && targetStatus == "done" && t.Recurrence != nil && *t.Recurrence != "" {
+		if t.DueDate == nil {
+			if err := tx.Rollback(); err != nil {
+				return nil, nil, fmt.Errorf("rollback: %w", err)
+			}
+			return nil, nil, repo.ErrConflict
+		}
+
+		nextDue, err := nextOccurrence(*t.DueDate, *t.Recurrence)
+		if err != nil {
+			return nil, nil, fmt.Errorf("compute next occurrence: %w", err)
+		}
+
+		// Determine the first status for the project (lowest position).
+		var firstStatus string
+		if err = tx.QueryRowContext(ctx,
+			bind(`SELECT status FROM project_statuses WHERE project_id = ? ORDER BY position LIMIT 1`),
+			t.ProjectID,
+		).Scan(&firstStatus); err != nil {
+			return nil, nil, fmt.Errorf("get first status: %w", err)
+		}
+
+		// Compute position for the new task (appended to siblings in the first status).
+		if err := lockTaskSiblingLists(ctx, tx, taskSiblingList{projectID: t.ProjectID, status: firstStatus}); err != nil {
+			return nil, nil, err
+		}
+		pos, err := nextPosition(ctx, tx, t.ProjectID, nil, firstStatus)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		// Build the next occurrence task.
+		newID := uuid.New().String()
+		nextTask = &model.Task{
+			ID:          newID,
+			ProjectID:   t.ProjectID,
+			Name:        t.Name,
+			Description: t.Description,
+			Status:      firstStatus,
+			DueDate:     &nextDue,
+			OwnerID:     t.OwnerID,
+			AssigneeID:  t.AssigneeID,
+			Position:    pos,
+			Recurrence:  t.Recurrence,
+		}
+
+		if _, err = tx.ExecContext(ctx,
+			bind(`INSERT INTO tasks
+			   (id, project_id, parent_id, name, description, status, due_date,
+			    owner_id, assignee_id, position, recurrence)
+			 VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`),
+			nextTask.ID, nextTask.ProjectID, nextTask.Name, nextTask.Description,
+			nextTask.Status, nextTask.DueDate, nextTask.OwnerID, nextTask.AssigneeID,
+			nextTask.Position, nextTask.Recurrence,
+		); err != nil {
+			return nil, nil, fmt.Errorf("insert next occurrence: %w", err)
+		}
+
+		// Copy tags from the original task.
+		if _, err = tx.ExecContext(ctx,
+			bind(`INSERT INTO task_tags (task_id, tag)
+			SELECT ?, tag FROM task_tags WHERE task_id = ?
+			ON CONFLICT DO NOTHING`),
+			newID, t.ID,
+		); err != nil {
+			return nil, nil, fmt.Errorf("copy tags: %w", err)
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
 		logger.FromCtx(ctx).Error("failed to update task", "err", err)
-		return err
+		return nil, nil, err
 	}
+
+	// If we spawned a next occurrence, re-fetch it so timestamps are populated.
+	if nextTask != nil {
+		createdRows, err := s.db.QueryContext(ctx,
+			bind(`SELECT id, project_id, parent_id, name, description,
+			        status, due_date, owner_id, assignee_id, position, recurrence, created_at, updated_at
+			 FROM tasks WHERE id = ?`), nextTask.ID)
+		if err == nil {
+			defer createdRows.Close()
+			if createdRows.Next() {
+				if fetched, ferr := scanTask(createdRows); ferr == nil {
+					nextTask = fetched
+				}
+			}
+		}
+	}
+
 	logger.FromCtx(ctx).Debug("updated task", "id", t.ID)
-	return nil
-}
-
-// CompleteTask marks the task as done and, if it is recurring with a due_date,
-// creates and returns the next occurrence. All changes happen in one transaction.
-func (s *taskStore) CompleteTask(ctx context.Context, id, doneStatus string) (*model.Task, *model.Task, error) {
-	logger.FromCtx(ctx).Debug("completing task", "id", id, "done_status", doneStatus)
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, nil, fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	// Load the task to get recurrence, due_date, project_id, etc.
-	rows, err := tx.QueryContext(ctx,
-		bind(`SELECT id, project_id, parent_id, name, description,
-		        status, due_date, owner_id, assignee_id, position, recurrence, created_at, updated_at
-		 FROM tasks WHERE id = ?`), id)
-	if err != nil {
-		return nil, nil, fmt.Errorf("load task: %w", err)
-	}
-	if !rows.Next() {
-		rows.Close()
-		return nil, nil, repo.ErrNotFound
-	}
-	task, err := scanTask(rows)
-	rows.Close()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Validate done_status against project_statuses.
-	if err := validateStatus(ctx, tx, task.ProjectID, doneStatus); err != nil {
-		return nil, nil, err
-	}
-
-	// Recurring task requires a due_date to compute next occurrence.
-	if task.Recurrence != nil && task.DueDate == nil {
-		return nil, nil, repo.ErrConflict
-	}
-
-	// Mark the task done and move it to the end of the done status group.
-	// Lock both the old and new status groups.
-	if err := lockTaskSiblingLists(ctx, tx,
-		taskSiblingList{projectID: task.ProjectID, parentID: task.ParentID, status: task.Status},
-		taskSiblingList{projectID: task.ProjectID, parentID: task.ParentID, status: doneStatus},
-	); err != nil {
-		return nil, nil, err
-	}
-
-	// Compact the old status group before removing the task.
-	if err := compactPositions(ctx, tx, task.ProjectID, task.ParentID, task.Status); err != nil {
-		return nil, nil, err
-	}
-
-	// Compute the new position (appended to the done status group).
-	newPos, err := nextPosition(ctx, tx, task.ProjectID, task.ParentID, doneStatus)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if _, err = tx.ExecContext(ctx,
-		bind(`UPDATE tasks SET status = ?, position = ?, updated_at = NOW() WHERE id = ?`),
-		doneStatus, newPos, id,
-	); err != nil {
-		return nil, nil, fmt.Errorf("update task status: %w", err)
-	}
-	task.Status = doneStatus
-
-	// Non-recurring: commit and return.
-	if task.Recurrence == nil {
-		if err := tx.Commit(); err != nil {
-			return nil, nil, fmt.Errorf("commit: %w", err)
-		}
-		logger.FromCtx(ctx).Debug("completed task", "id", id)
-		return task, nil, nil
-	}
-
-	// Compute next due date.
-	nextDue, err := nextOccurrence(*task.DueDate, *task.Recurrence)
-	if err != nil {
-		return nil, nil, fmt.Errorf("compute next occurrence: %w", err)
-	}
-
-	// Determine the first status for the project (lowest position).
-	var firstStatus string
-	if err = tx.QueryRowContext(ctx,
-		bind(`SELECT status FROM project_statuses WHERE project_id = ? ORDER BY position LIMIT 1`),
-		task.ProjectID,
-	).Scan(&firstStatus); err != nil {
-		return nil, nil, fmt.Errorf("get first status: %w", err)
-	}
-
-	// Compute position for the new task (appended to siblings in the first status).
-	if err := lockTaskSiblingLists(ctx, tx, taskSiblingList{projectID: task.ProjectID, status: firstStatus}); err != nil {
-		return nil, nil, err
-	}
-	pos, err := nextPosition(ctx, tx, task.ProjectID, nil, firstStatus)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Build the next occurrence task.
-	newID := uuid.New().String()
-	newTask := &model.Task{
-		ID:          newID,
-		ProjectID:   task.ProjectID,
-		Name:        task.Name,
-		Description: task.Description,
-		Status:      firstStatus,
-		DueDate:     &nextDue,
-		OwnerID:     task.OwnerID,
-		AssigneeID:  task.AssigneeID,
-		Position:    pos,
-		Recurrence:  task.Recurrence,
-	}
-
-	if _, err = tx.ExecContext(ctx,
-		bind(`INSERT INTO tasks
-		   (id, project_id, parent_id, name, description, status, due_date,
-		    owner_id, assignee_id, position, recurrence)
-		 VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`),
-		newTask.ID, newTask.ProjectID, newTask.Name, newTask.Description,
-		newTask.Status, newTask.DueDate, newTask.OwnerID, newTask.AssigneeID,
-		newTask.Position, newTask.Recurrence,
-	); err != nil {
-		return nil, nil, fmt.Errorf("insert next occurrence: %w", err)
-	}
-
-	// Copy tags from the original task.
-	if _, err = tx.ExecContext(ctx,
-		bind(`INSERT INTO task_tags (task_id, tag)
-		SELECT ?, tag FROM task_tags WHERE task_id = ?
-		ON CONFLICT DO NOTHING`),
-		newID, id,
-	); err != nil {
-		return nil, nil, fmt.Errorf("copy tags: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, nil, fmt.Errorf("commit: %w", err)
-	}
-
-	// Re-fetch the new task so timestamps are populated.
-	createdRows, err := s.db.QueryContext(ctx,
-		bind(`SELECT id, project_id, parent_id, name, description,
-		        status, due_date, owner_id, assignee_id, position, recurrence, created_at, updated_at
-		 FROM tasks WHERE id = ?`), newID)
-	if err != nil {
-		return task, newTask, nil // best-effort if re-fetch fails
-	}
-	defer createdRows.Close()
-	if createdRows.Next() {
-		if fetched, ferr := scanTask(createdRows); ferr == nil {
-			newTask = fetched
-		}
-	}
-
-	logger.FromCtx(ctx).Debug("completed task", "id", id)
-	return task, newTask, nil
+	return t, nextTask, nil
 }
 
 // Delete removes a task by ID. The DB CASCADE removes subtasks and tags.

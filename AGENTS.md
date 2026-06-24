@@ -50,7 +50,7 @@ Tags          stored as strings in task_tags(task_id, tag)
 
 ### Default Statuses
 
-Seeded on `CreateProject`: `todo`, `in_progress`, `done`, `cancelled`. Task status is validated at the app layer against `project_statuses` (not a foreign key).
+Seeded on `CreateProject`: `todo`, `in_progress`, `done`. Task status is validated at the app layer against `project_statuses` (not a foreign key).
 
 ### Key Constraints
 
@@ -82,15 +82,15 @@ Roles: `read(1) < modify(2) < admin(3)`. `RequireRole(min, actual string) bool` 
 
 ## Recurring Tasks
 
-Only triggered by `POST /tasks/{id}/complete` or MCP `complete_task`. Plain status updates do **not** create next occurrences.
+Only triggered by `PATCH /tasks/{id}` with `status: "done"` (or MCP `update_task` with same). Status updates to other statuses do **not** create next occurrences.
 
-On completion of a recurring task with `due_date`:
+On update to `status: "done"` of a recurring task with `due_date`:
 1. Marks current task done.
 2. Creates next occurrence with `due_date = nextOccurrence(due, rrule)`.
 3. Sets next task status to first project status (lowest position).
 4. Copies tags.
 
-Response: `{completed, next}` where `next` is `null` for non-recurring. Completing a recurring task without a due date returns conflict.
+Response: `{task, next}` where `next` is `null` for non-recurring or non-done updates. Updating a recurring task to `done` without a due date returns conflict.
 
 ## MCP
 

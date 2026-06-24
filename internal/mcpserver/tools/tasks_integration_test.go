@@ -45,7 +45,8 @@ func TestMCPTasksIntegration_CreateListGetUpdateAndComplete(t *testing.T) {
 	})
 	updated := mcptest.Decode[struct {
 		*model.Task
-		Tags []string `json:"tags"`
+		Tags []string    `json:"tags"`
+		Next *model.Task `json:"next,omitempty"`
 	}](t, updateResult)
 	if updated.Task == nil {
 		t.Fatal("updated task is nil")
@@ -74,16 +75,17 @@ func TestMCPTasksIntegration_CreateListGetUpdateAndComplete(t *testing.T) {
 		t.Fatalf("seed recurring task: %v", err)
 	}
 
-	completeResult := mcptest.CallTool(t, env, "complete_task", map[string]any{
-		"task_id":     recurring.ID,
-		"done_status": "done",
+	completeResult := mcptest.CallTool(t, env, "update_task", map[string]any{
+		"task_id": recurring.ID,
+		"status":  "done",
 	})
 	completed := mcptest.Decode[struct {
-		Completed *model.Task `json:"completed"`
-		Next      *model.Task `json:"next"`
+		*model.Task
+		Tags []string    `json:"tags"`
+		Next *model.Task `json:"next,omitempty"`
 	}](t, completeResult)
-	if completed.Completed == nil || completed.Completed.Status != "done" {
-		t.Fatalf("completed = %#v, want status done", completed.Completed)
+	if completed.Task == nil || completed.Status != "done" {
+		t.Fatalf("completed = %#v, want status done", completed.Task)
 	}
 	if completed.Next == nil {
 		t.Fatal("next = nil, want next occurrence")

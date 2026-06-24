@@ -29,14 +29,14 @@ func RegisterRoutes(api huma.API, projects repo.ProjectRepo, tasks repo.TaskRepo
 	huma.Get(group, "/{taskID}", h.get)
 	huma.Patch(group, "/{taskID}", h.update)
 	huma.Delete(group, "/{taskID}", h.delete)
-	huma.Post(group, "/{taskID}/complete", h.completeTask)
 	huma.Get(group, "/{taskID}/tasks", h.listSubtasks)
 	huma.Post(group, "/{taskID}/tasks", h.createSubtask)
 	huma.Get(group, "/{taskID}/tags", h.listTags)
 	huma.Post(group, "/{taskID}/tags", h.addTag)
 	huma.Delete(group, "/{taskID}/tags/{tag}", h.deleteTag)
 
-	schema := api.OpenAPI().Components.Schemas.SchemaFromRef("#/components/schemas/CompleteTaskResp")
+	// Make the "next" field in the update response schema nullable.
+	schema := api.OpenAPI().Components.Schemas.SchemaFromRef("#/components/schemas/updateTaskResp")
 	if schema != nil && schema.Properties != nil && schema.Properties["next"] != nil {
 		taskRef := schema.Properties["next"].Ref
 		if taskRef != "" {
@@ -132,7 +132,16 @@ type updateTaskInput struct {
 	Body   updateTaskBody
 }
 
-func (h *Handler) update(ctx context.Context, input *updateTaskInput) (*taskOutput, error) {
+type updateTaskResp struct {
+	Task *model.Task `json:"task"`
+	Next *model.Task `json:"next"`
+}
+
+type updateTaskOutput struct {
+	Body updateTaskResp
+}
+
+func (h *Handler) update(ctx context.Context, input *updateTaskInput) (*updateTaskOutput, error) {
 	t, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
 		return nil, humautil.RepoError(err)
@@ -182,13 +191,14 @@ func (h *Handler) update(ctx context.Context, input *updateTaskInput) (*taskOutp
 		}
 		t.Recurrence = input.Body.Recurrence.Value
 	}
-	if err := h.tasks.Update(ctx, t); err != nil {
+	updated, next, err := h.tasks.Update(ctx, t)
+	if err != nil {
 		if errors.Is(err, repo.ErrConflict) {
-			return nil, huma.Error409Conflict("invalid status")
+			return nil, huma.Error409Conflict("invalid status or missing due_date for recurring task")
 		}
 		return nil, huma.Error500InternalServerError("internal error")
 	}
-	return &taskOutput{Body: t}, nil
+	return &updateTaskOutput{Body: updateTaskResp{Task: updated, Next: next}}, nil
 }
 
 func (h *Handler) delete(ctx context.Context, input *taskInput) (*struct{}, error) {
@@ -203,45 +213,6 @@ func (h *Handler) delete(ctx context.Context, input *taskInput) (*struct{}, erro
 		return nil, humautil.RepoError(err)
 	}
 	return nil, nil
-}
-
-type completeTaskBody struct {
-	DoneStatus string `json:"done_status" minLength:"1"`
-}
-
-type completeTaskInput struct {
-	TaskID string `path:"taskID"`
-	Body   completeTaskBody
-}
-
-type completeTaskResp struct {
-	Completed *model.Task `json:"completed"`
-	Next      *model.Task `json:"next"`
-}
-
-type completeTaskOutput struct {
-	Body completeTaskResp
-}
-
-func (h *Handler) completeTask(ctx context.Context, input *completeTaskInput) (*completeTaskOutput, error) {
-	t, role, err := h.loadTask(ctx, input.TaskID)
-	if err != nil {
-		return nil, humautil.RepoError(err)
-	}
-	if !humautil.RequireRole(model.RoleModify, role) {
-		return nil, huma.Error403Forbidden("forbidden")
-	}
-	if strings.TrimSpace(input.Body.DoneStatus) == "" {
-		return nil, huma.Error422UnprocessableEntity("done_status is required")
-	}
-	completed, next, err := h.tasks.CompleteTask(ctx, t.ID, input.Body.DoneStatus)
-	if err != nil {
-		if errors.Is(err, repo.ErrConflict) {
-			return nil, huma.Error409Conflict("invalid done_status or missing due_date for recurring task")
-		}
-		return nil, huma.Error500InternalServerError("internal error")
-	}
-	return &completeTaskOutput{Body: completeTaskResp{Completed: completed, Next: next}}, nil
 }
 
 type subtaskListOutput struct {

@@ -19,56 +19,6 @@ func userCtx() context.Context {
 	return middleware.WithUser(context.Background(), &model.User{ID: "u1", Name: "Alice", Email: "alice@example.com"})
 }
 
-func TestCompleteTaskHandler(t *testing.T) {
-	t.Run("missing task_id returns error", func(t *testing.T) {
-		handler := CompleteTaskHandler(&mock.ProjectRepo{}, &mock.TaskRepo{})
-		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, completeTaskInput{
-			DoneStatus: "done",
-			// TaskID intentionally empty
-		})
-		if err == nil {
-			t.Fatal("expected error for missing task_id")
-		}
-	})
-
-	t.Run("recurring complete returns both completed and next", func(t *testing.T) {
-		nextDue := "2026-04-15"
-		completed := &model.Task{ID: "t1", ProjectID: "p1", Name: "T", Status: "done", OwnerID: "u1"}
-		next := &model.Task{ID: "t2", ProjectID: "p1", Name: "T", Status: "todo", DueDate: &nextDue, OwnerID: "u1"}
-
-		tr := &mock.TaskRepo{
-			GetFn: func(_ context.Context, id string) (*model.Task, error) {
-				return &model.Task{ID: id, ProjectID: "p1", Name: "T", Status: "todo", OwnerID: "u1"}, nil
-			},
-			CompleteTaskFn: func(_ context.Context, _, _ string) (*model.Task, *model.Task, error) {
-				return completed, next, nil
-			},
-		}
-		pr := &mock.ProjectRepo{
-			GetMemberRoleFn: func(_ context.Context, _, _ string) (string, error) {
-				return model.RoleModify, nil
-			},
-		}
-		handler := CompleteTaskHandler(pr, tr)
-		_, output, err := handler(userCtx(), &mcp.CallToolRequest{}, completeTaskInput{
-			TaskID:     "t1",
-			DoneStatus: "done",
-		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if output == nil {
-			t.Fatal("expected non-nil output")
-		}
-		if output.Completed == nil {
-			t.Error("completed is nil in output")
-		}
-		if output.Next == nil {
-			t.Error("next is nil in output, want next occurrence")
-		}
-	})
-}
-
 func TestListTasksHandlerWithParentID(t *testing.T) {
 	t.Run("only parent_id fetches parent task and lists children", func(t *testing.T) {
 		tr := &mock.TaskRepo{
@@ -190,7 +140,9 @@ func TestUpdateTaskHandlerErrors(t *testing.T) {
 			GetFn: func(_ context.Context, id string) (*model.Task, error) {
 				return &model.Task{ID: id, ProjectID: "p1", Name: "T", Status: "todo", OwnerID: "u1"}, nil
 			},
-			UpdateFn: func(_ context.Context, _ *model.Task) error { return errors.New("db error") },
+			UpdateFn: func(_ context.Context, _ *model.Task) (*model.Task, *model.Task, error) {
+				return nil, nil, errors.New("db error")
+			},
 		}
 		handler := UpdateTaskHandler(modifyPR, tr, &mock.TagRepo{})
 		_, _, err := handler(userCtx(), &mcp.CallToolRequest{}, updateTaskInput{TaskID: "t1", Name: &newName})
@@ -360,9 +312,9 @@ func TestUpdateTaskHandler(t *testing.T) {
 			GetFn: func(_ context.Context, _ string) (*model.Task, error) {
 				return &model.Task{ID: "t1", ProjectID: "p1", Name: "T", Status: "todo", OwnerID: "u1"}, nil
 			},
-			UpdateFn: func(_ context.Context, _ *model.Task) error {
+			UpdateFn: func(_ context.Context, t *model.Task) (*model.Task, *model.Task, error) {
 				updateCalled = true
-				return nil
+				return t, nil, nil
 			},
 		}
 		tagRepo := &mock.TagRepo{
@@ -453,9 +405,9 @@ func TestUpdateTaskAccessControl(t *testing.T) {
 			GetFn: func(_ context.Context, id string) (*model.Task, error) {
 				return &model.Task{ID: id, ProjectID: "p1", Name: "T", Status: "todo", OwnerID: "u1"}, nil
 			},
-			UpdateFn: func(_ context.Context, _ *model.Task) error {
+			UpdateFn: func(_ context.Context, t *model.Task) (*model.Task, *model.Task, error) {
 				updateCalled = true
-				return nil
+				return t, nil, nil
 			},
 		}
 		pr := &mock.ProjectRepo{
@@ -482,9 +434,9 @@ func TestUpdateTaskAccessControl(t *testing.T) {
 			GetFn: func(_ context.Context, id string) (*model.Task, error) {
 				return &model.Task{ID: id, ProjectID: "p1", Name: "T", Status: "todo", OwnerID: "u1"}, nil
 			},
-			UpdateFn: func(_ context.Context, _ *model.Task) error {
+			UpdateFn: func(_ context.Context, t *model.Task) (*model.Task, *model.Task, error) {
 				updateCalled = true
-				return nil
+				return t, nil, nil
 			},
 		}
 		pr := &mock.ProjectRepo{
@@ -538,9 +490,9 @@ func TestUpdateTaskAccessControl(t *testing.T) {
 			GetFn: func(_ context.Context, id string) (*model.Task, error) {
 				return &model.Task{ID: id, ProjectID: "p1", Name: "T", Status: "todo", OwnerID: "u1"}, nil
 			},
-			UpdateFn: func(_ context.Context, _ *model.Task) error {
+			UpdateFn: func(_ context.Context, t *model.Task) (*model.Task, *model.Task, error) {
 				updateCalled = true
-				return nil
+				return t, nil, nil
 			},
 		}
 		pr := &mock.ProjectRepo{
