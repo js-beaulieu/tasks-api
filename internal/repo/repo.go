@@ -40,13 +40,11 @@ type TaskRepo interface {
 	ListChildren(ctx context.Context, projectID string, parentID *string, f TaskFilter) ([]*model.Task, error)
 	Get(ctx context.Context, id string) (*model.Task, error)
 	Create(ctx context.Context, t *model.Task) error
-	Update(ctx context.Context, t *model.Task) error
+	// Update modifies a task. If the status changes to "done" and the task is
+	// recurring with a due_date, it also creates the next occurrence and returns
+	// its ID via nextOccurrenceID (nil when no recurrence is applicable).
+	Update(ctx context.Context, t *model.Task) (*model.Task, *string, error)
 	Delete(ctx context.Context, id string) error
-	// CompleteTask sets the task's status to doneStatus, then — if the task has
-	// both a recurrence and a due_date — creates and returns a new task as the
-	// next occurrence. Returns (completedTask, nextTask, error).
-	// nextTask is nil when no recurrence is applicable.
-	CompleteTask(ctx context.Context, id, doneStatus string) (*model.Task, *model.Task, error)
 }
 
 type TagRepo interface {

@@ -45,7 +45,8 @@ func TestMCPTasksIntegration_CreateListGetUpdateAndComplete(t *testing.T) {
 	})
 	updated := mcptest.Decode[struct {
 		*model.Task
-		Tags []string `json:"tags"`
+		Tags             []string `json:"tags"`
+		NextOccurrenceID *string  `json:"next_occurrence_id,omitempty"`
 	}](t, updateResult)
 	if updated.Task == nil {
 		t.Fatal("updated task is nil")
@@ -74,22 +75,29 @@ func TestMCPTasksIntegration_CreateListGetUpdateAndComplete(t *testing.T) {
 		t.Fatalf("seed recurring task: %v", err)
 	}
 
-	completeResult := mcptest.CallTool(t, env, "complete_task", map[string]any{
-		"task_id":     recurring.ID,
-		"done_status": "done",
+	completeResult := mcptest.CallTool(t, env, "update_task", map[string]any{
+		"task_id": recurring.ID,
+		"status":  "done",
 	})
 	completed := mcptest.Decode[struct {
-		Completed *model.Task `json:"completed"`
-		Next      *model.Task `json:"next"`
+		*model.Task
+		Tags             []string `json:"tags"`
+		NextOccurrenceID *string  `json:"next_occurrence_id,omitempty"`
 	}](t, completeResult)
-	if completed.Completed == nil || completed.Completed.Status != "done" {
-		t.Fatalf("completed = %#v, want status done", completed.Completed)
+	if completed.Task == nil || completed.Status != "done" {
+		t.Fatalf("completed = %#v, want status done", completed.Task)
 	}
-	if completed.Next == nil {
-		t.Fatal("next = nil, want next occurrence")
+	if completed.NextOccurrenceID == nil {
+		t.Fatal("next_occurrence_id = nil, want next occurrence ID")
 	}
-	if completed.Next.DueDate == nil || *completed.Next.DueDate != "2026-05-09" {
-		t.Fatalf("next due_date = %v, want 2026-05-09", completed.Next.DueDate)
+
+	// Verify the spawned task exists and has the expected due date
+	nextTask, err := env.Store.Tasks.Get(t.Context(), *completed.NextOccurrenceID)
+	if err != nil {
+		t.Fatalf("get next occurrence: %v", err)
+	}
+	if nextTask.DueDate == nil || *nextTask.DueDate != "2026-05-09" {
+		t.Fatalf("next due_date = %v, want 2026-05-09", nextTask.DueDate)
 	}
 }
 

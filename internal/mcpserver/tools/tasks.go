@@ -158,7 +158,8 @@ type updateTaskInput struct {
 
 type updateTaskResult struct {
 	*model.Task
-	Tags []string `json:"tags"`
+	Tags             []string `json:"tags"`
+	NextOccurrenceID *string  `json:"next_occurrence_id,omitempty"`
 }
 
 func UpdateTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo, tagsRepo repo.TagRepo) mcp.ToolHandlerFor[updateTaskInput, *updateTaskResult] {
@@ -202,63 +203,25 @@ func UpdateTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo, tagsR
 		if in.ProjectID != nil {
 			t.ProjectID = *in.ProjectID
 		}
-		if err := tasks.Update(ctx, t); err != nil {
+		updated, nextID, err := tasks.Update(ctx, t)
+		if err != nil {
 			return nil, nil, err
 		}
 		for _, tag := range in.AddTags {
-			if err := tagsRepo.Add(ctx, t.ID, tag); err != nil {
+			if err := tagsRepo.Add(ctx, updated.ID, tag); err != nil {
 				return nil, nil, err
 			}
 		}
 		for _, tag := range in.RemoveTags {
-			if err := tagsRepo.Delete(ctx, t.ID, tag); err != nil {
+			if err := tagsRepo.Delete(ctx, updated.ID, tag); err != nil {
 				return nil, nil, err
 			}
 		}
-		tags, err := tagsRepo.ListForTask(ctx, t.ID)
+		tags, err := tagsRepo.ListForTask(ctx, updated.ID)
 		if err != nil {
 			return nil, nil, err
 		}
-		return nil, &updateTaskResult{Task: t, Tags: tags}, nil
-	}
-}
-
-// ── complete_task ─────────────────────────────────────────────────────────────
-
-var CompleteTaskTool = &mcp.Tool{
-	Name:        "complete_task",
-	Description: "Mark a task as done. If the task is recurring, creates and returns the next occurrence automatically.",
-}
-
-type completeTaskInput struct {
-	TaskID     string `json:"task_id"`
-	DoneStatus string `json:"done_status"`
-}
-
-type completeTaskResult struct {
-	Completed *model.Task `json:"completed"`
-	Next      *model.Task `json:"next"`
-}
-
-func CompleteTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo) mcp.ToolHandlerFor[completeTaskInput, *completeTaskResult] {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, in completeTaskInput) (*mcp.CallToolResult, *completeTaskResult, error) {
-		if in.TaskID == "" || in.DoneStatus == "" {
-			return nil, nil, errors.New("task_id and done_status are required")
-		}
-		userID := middleware.UserFromCtx(ctx).ID
-		task, err := tasks.Get(ctx, in.TaskID)
-		if err != nil {
-			return nil, nil, err
-		}
-		role, err := projectsRepo.GetMemberRole(ctx, task.ProjectID, userID)
-		if err != nil || !humautil.RequireRole(model.RoleModify, role) {
-			return nil, nil, errors.New("no access")
-		}
-		completed, next, err := tasks.CompleteTask(ctx, in.TaskID, in.DoneStatus)
-		if err != nil {
-			return nil, nil, err
-		}
-		return nil, &completeTaskResult{Completed: completed, Next: next}, nil
+		return nil, &updateTaskResult{Task: updated, Tags: tags, NextOccurrenceID: nextID}, nil
 	}
 }
 

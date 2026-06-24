@@ -404,138 +404,6 @@ func TestTasksIntegration_Delete_CompactsSiblingPositions(t *testing.T) {
 	}
 }
 
-// ── POST /tasks/{taskID}/complete ────────────────────────────────────────────
-
-func TestTasksIntegration_Complete_NonRecurring(t *testing.T) {
-	env := httptestutil.NewEnv(t)
-	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
-	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
-
-	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + task.ID + "/complete", Body: map[string]any{
-		"done_status": "done",
-	}, UserID: env.User.ID})
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
-	}
-
-	var body struct {
-		Completed *model.Task `json:"completed"`
-		Next      *model.Task `json:"next"`
-	}
-	httptestutil.Decode(t, res, &body)
-	if body.Completed == nil || body.Completed.Status != "done" {
-		t.Fatalf("completed = %#v, want status done", body.Completed)
-	}
-	if body.Next != nil {
-		t.Fatalf("next = %#v, want nil for non-recurring", body.Next)
-	}
-}
-
-func TestTasksIntegration_Complete_Recurring(t *testing.T) {
-	env := httptestutil.NewEnv(t)
-	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
-	ctx := context.Background()
-
-	due := "2026-05-08"
-	recurrence := "FREQ=DAILY"
-	recurring := &model.Task{
-		ProjectID:  project.ID,
-		Name:       "Daily follow-up",
-		Status:     "todo",
-		DueDate:    &due,
-		OwnerID:    env.User.ID,
-		Recurrence: &recurrence,
-	}
-	if err := env.Store.Tasks.Create(ctx, recurring); err != nil {
-		t.Fatalf("seed recurring task: %v", err)
-	}
-	if err := env.Store.Tags.Add(ctx, recurring.ID, "recurring"); err != nil {
-		t.Fatalf("seed recurring tag: %v", err)
-	}
-
-	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + recurring.ID + "/complete", Body: map[string]any{"done_status": "done"}, UserID: env.User.ID})
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
-	}
-
-	var body struct {
-		Completed *model.Task `json:"completed"`
-		Next      *model.Task `json:"next"`
-	}
-	httptestutil.Decode(t, res, &body)
-	if body.Completed == nil || body.Completed.Status != "done" {
-		t.Fatalf("completed = %#v, want status done", body.Completed)
-	}
-	if body.Next == nil {
-		t.Fatal("next = nil, want next occurrence")
-	}
-	if body.Next.DueDate == nil || *body.Next.DueDate != "2026-05-09" {
-		t.Fatalf("next due_date = %v, want 2026-05-09", body.Next.DueDate)
-	}
-	if body.Next.Status != "todo" {
-		t.Fatalf("next status = %q, want todo", body.Next.Status)
-	}
-
-	tags, err := env.Store.Tags.ListForTask(ctx, body.Next.ID)
-	if err != nil {
-		t.Fatalf("list next tags: %v", err)
-	}
-	if len(tags) != 1 || tags[0] != "recurring" {
-		t.Fatalf("next tags = %v, want [recurring]", tags)
-	}
-}
-
-func TestTasksIntegration_Complete_ReadForbidden(t *testing.T) {
-	env := httptestutil.NewEnv(t)
-	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
-	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
-	reader := createUserWithRole(t, env, project.ID, model.RoleRead)
-
-	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + task.ID + "/complete", Body: map[string]any{
-		"done_status": "done",
-	}, UserID: reader.ID})
-	if res.StatusCode != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusForbidden)
-	}
-}
-
-func TestTasksIntegration_Complete_BlankDoneStatus(t *testing.T) {
-	env := httptestutil.NewEnv(t)
-	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
-	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
-
-	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + task.ID + "/complete", Body: map[string]any{
-		"done_status": "",
-	}, UserID: env.User.ID})
-	if res.StatusCode != http.StatusUnprocessableEntity {
-		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusUnprocessableEntity)
-	}
-}
-
-func TestTasksIntegration_Complete_InvalidDoneStatus(t *testing.T) {
-	env := httptestutil.NewEnv(t)
-	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
-	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
-
-	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + task.ID + "/complete", Body: map[string]any{
-		"done_status": "nonexistent",
-	}, UserID: env.User.ID})
-	if res.StatusCode != http.StatusConflict {
-		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusConflict)
-	}
-}
-
-func TestTasksIntegration_Complete_InvalidJSON(t *testing.T) {
-	env := httptestutil.NewEnv(t)
-	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
-	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
-
-	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPost, Path: "/tasks/" + task.ID + "/complete", Body: `{invalid`, UserID: env.User.ID})
-	if res.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
-	}
-}
-
 // ── GET /tasks/{taskID}/tasks ────────────────────────────────────────────────
 
 func TestTasksIntegration_ListSubtasks_DirectChildrenOnly(t *testing.T) {
@@ -1036,3 +904,88 @@ func TestTasksIntegration_CreateSubtask_RecurrenceWithoutDueDate(t *testing.T) {
 }
 
 func strPtr(s string) *string { return &s }
+
+func TestTasksIntegration_Patch_CompleteRecurring_ReturnsNextOccurrenceID(t *testing.T) {
+	env := httptestutil.NewEnv(t)
+	ctx := context.Background()
+	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
+	due := "2026-04-14"
+	rec := "FREQ=DAILY"
+	recurring := &model.Task{
+		ProjectID:  project.ID,
+		Name:       "Daily Task",
+		Status:     "todo",
+		DueDate:    &due,
+		OwnerID:    env.User.ID,
+		Recurrence: &rec,
+	}
+	if err := env.Store.Tasks.Create(ctx, recurring); err != nil {
+		t.Fatalf("seed recurring task: %v", err)
+	}
+
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: "/tasks/" + recurring.ID, Body: map[string]any{
+		"status": "done",
+	}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", res.StatusCode, http.StatusOK, res.Body)
+	}
+
+	nextID := res.Header.Get("X-Next-Occurrence-Id")
+	if nextID == "" {
+		t.Fatal("X-Next-Occurrence-Id header is empty, want a next occurrence ID")
+	}
+
+	// Verify the spawned task exists in the DB
+	next, err := env.Store.Tasks.Get(ctx, nextID)
+	if err != nil {
+		t.Fatalf("Get next occurrence: %v", err)
+	}
+	if next.DueDate == nil || *next.DueDate != "2026-04-15" {
+		t.Errorf("next due_date = %v, want 2026-04-15", next.DueDate)
+	}
+	if next.Status != "todo" {
+		t.Errorf("next status = %q, want todo", next.Status)
+	}
+}
+
+func TestTasksIntegration_Patch_CompleteNonRecurring_NoNextOccurrenceHeader(t *testing.T) {
+	env := httptestutil.NewEnv(t)
+	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
+	task := seed.Task(t, env.Store, seed.TaskInput{ProjectID: project.ID, OwnerID: env.User.ID})
+
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: "/tasks/" + task.ID, Body: map[string]any{
+		"status": "done",
+	}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
+
+	nextID := res.Header.Get("X-Next-Occurrence-Id")
+	if nextID != "" {
+		t.Errorf("X-Next-Occurrence-Id header = %q, want empty for non-recurring task", nextID)
+	}
+}
+
+func TestTasksIntegration_Patch_CompleteRecurringNoDueDate_Returns409(t *testing.T) {
+	env := httptestutil.NewEnv(t)
+	project := seed.Project(t, env.Store, seed.ProjectInput{OwnerID: env.User.ID})
+	ctx := context.Background()
+	rec := "FREQ=DAILY"
+	recurring := &model.Task{
+		ProjectID:  project.ID,
+		Name:       "No Due Date",
+		Status:     "todo",
+		OwnerID:    env.User.ID,
+		Recurrence: &rec,
+	}
+	if err := env.Store.Tasks.Create(ctx, recurring); err != nil {
+		t.Fatalf("seed recurring task: %v", err)
+	}
+
+	res := httptestutil.Request(t, env, httptestutil.RequestOptions{Method: http.MethodPatch, Path: "/tasks/" + recurring.ID, Body: map[string]any{
+		"status": "done",
+	}, UserID: env.User.ID})
+	if res.StatusCode != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusConflict)
+	}
+}

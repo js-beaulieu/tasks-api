@@ -36,7 +36,6 @@ func New(store *postgres.Store, cfg config.Config) *mcp.Server {
 		mcp.AddTool(s, tools.CreateTaskTool, withLogging("create_task", cfg, tools.CreateTaskHandler(store.Projects, store.Tasks)))
 		mcp.AddTool(s, tools.UpdateTaskTool, withLogging("update_task", cfg, tools.UpdateTaskHandler(store.Projects, store.Tasks, store.Tags)))
 		mcp.AddTool(s, tools.DeleteTaskTool, withLogging("delete_task", cfg, tools.DeleteTaskHandler(store.Projects, store.Tasks)))
-		mcp.AddTool(s, tools.CompleteTaskTool, withLogging("complete_task", cfg, tools.CompleteTaskHandler(store.Projects, store.Tasks)))
 		mcp.AddTool(s, tools.ListTagsTool, withLogging("list_tags", cfg, tools.ListTagsHandler(store.Tags)))
 	}
 

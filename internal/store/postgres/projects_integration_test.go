@@ -17,7 +17,7 @@ import (
 func TestCreateProject_AdditionalStatuses(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("no extra statuses seeds exactly 4 defaults", func(t *testing.T) {
+	t.Run("no extra statuses seeds exactly 3 defaults", func(t *testing.T) {
 		_, store := testdb.Open(t)
 		owner := seed.User(t, store, seed.UserInput{ID: "u1", Name: "Alice", Email: "alice@test.com"})
 		p := &model.Project{Name: "P1", OwnerID: owner.ID}
@@ -52,15 +52,15 @@ func TestCreateProject_AdditionalStatuses(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ListStatuses: %v", err)
 		}
-		if len(statuses) != 6 {
-			t.Fatalf("len(statuses) = %d, want 6", len(statuses))
+		if len(statuses) != 5 {
+			t.Fatalf("len(statuses) = %d, want 5", len(statuses))
 		}
-		extras := statuses[4:]
-		if extras[0].Status != "À faire" || extras[0].Position != 4 {
-			t.Errorf("extras[0] = {%q, %d}, want {%q, 4}", extras[0].Status, extras[0].Position, "À faire")
+		extras := statuses[3:]
+		if extras[0].Status != "À faire" || extras[0].Position != 3 {
+			t.Errorf("extras[0] = {%q, %d}, want {%q, 3}", extras[0].Status, extras[0].Position, "À faire")
 		}
-		if extras[1].Status != "En cours" || extras[1].Position != 5 {
-			t.Errorf("extras[1] = {%q, %d}, want {%q, 5}", extras[1].Status, extras[1].Position, "En cours")
+		if extras[1].Status != "En cours" || extras[1].Position != 4 {
+			t.Errorf("extras[1] = {%q, %d}, want {%q, 4}", extras[1].Status, extras[1].Position, "En cours")
 		}
 	})
 
@@ -76,11 +76,11 @@ func TestCreateProject_AdditionalStatuses(t *testing.T) {
 			t.Fatalf("ListStatuses: %v", err)
 		}
 		// "todo" is a duplicate — only "extra" should be appended
-		if len(statuses) != 5 {
-			t.Fatalf("len(statuses) = %d, want 5 (4 defaults + 1 non-duplicate extra)", len(statuses))
+		if len(statuses) != 4 {
+			t.Fatalf("len(statuses) = %d, want 4 (3 defaults + 1 non-duplicate extra)", len(statuses))
 		}
-		if statuses[4].Status != "extra" {
-			t.Errorf("statuses[4] = %q, want %q", statuses[4].Status, "extra")
+		if statuses[3].Status != "extra" {
+			t.Errorf("statuses[3] = %q, want %q", statuses[3].Status, "extra")
 		}
 	})
 }

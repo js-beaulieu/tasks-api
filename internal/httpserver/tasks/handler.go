@@ -29,32 +29,11 @@ func RegisterRoutes(api huma.API, projects repo.ProjectRepo, tasks repo.TaskRepo
 	huma.Get(group, "/{taskID}", h.get)
 	huma.Patch(group, "/{taskID}", h.update)
 	huma.Delete(group, "/{taskID}", h.delete)
-	huma.Post(group, "/{taskID}/complete", h.completeTask)
 	huma.Get(group, "/{taskID}/tasks", h.listSubtasks)
 	huma.Post(group, "/{taskID}/tasks", h.createSubtask)
 	huma.Get(group, "/{taskID}/tags", h.listTags)
 	huma.Post(group, "/{taskID}/tags", h.addTag)
 	huma.Delete(group, "/{taskID}/tags/{tag}", h.deleteTag)
-
-	schema := api.OpenAPI().Components.Schemas.SchemaFromRef("#/components/schemas/CompleteTaskResp")
-	if schema != nil && schema.Properties != nil && schema.Properties["next"] != nil {
-		taskRef := schema.Properties["next"].Ref
-		if taskRef != "" {
-			schema.Properties["next"] = &huma.Schema{
-				AnyOf: []*huma.Schema{
-					{Ref: taskRef},
-					{Type: "null"},
-				},
-			}
-			var required []string
-			for _, name := range schema.Required {
-				if name != "next" {
-					required = append(required, name)
-				}
-			}
-			schema.Required = required
-		}
-	}
 }
 
 func (h *Handler) loadTask(ctx context.Context, taskID string) (*model.Task, string, error) {
@@ -132,7 +111,12 @@ type updateTaskInput struct {
 	Body   updateTaskBody
 }
 
-func (h *Handler) update(ctx context.Context, input *updateTaskInput) (*taskOutput, error) {
+type updateTaskOutput struct {
+	NextOccurrenceID string `header:"X-Next-Occurrence-Id"`
+	Body             *model.Task
+}
+
+func (h *Handler) update(ctx context.Context, input *updateTaskInput) (*updateTaskOutput, error) {
 	t, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
 		return nil, humautil.RepoError(err)
@@ -182,13 +166,22 @@ func (h *Handler) update(ctx context.Context, input *updateTaskInput) (*taskOutp
 		}
 		t.Recurrence = input.Body.Recurrence.Value
 	}
-	if err := h.tasks.Update(ctx, t); err != nil {
+	// Pre-validation: recurring task being marked done must have a due_date.
+	if t.Status == "done" && t.Recurrence != nil && *t.Recurrence != "" && t.DueDate == nil {
+		return nil, huma.Error409Conflict("recurring task requires due_date to complete")
+	}
+	updated, nextID, err := h.tasks.Update(ctx, t)
+	if err != nil {
 		if errors.Is(err, repo.ErrConflict) {
-			return nil, huma.Error409Conflict("invalid status")
+			return nil, huma.Error409Conflict("invalid status or missing due_date for recurring task")
 		}
 		return nil, huma.Error500InternalServerError("internal error")
 	}
-	return &taskOutput{Body: t}, nil
+	out := &updateTaskOutput{Body: updated}
+	if nextID != nil {
+		out.NextOccurrenceID = *nextID
+	}
+	return out, nil
 }
 
 func (h *Handler) delete(ctx context.Context, input *taskInput) (*struct{}, error) {
@@ -203,45 +196,6 @@ func (h *Handler) delete(ctx context.Context, input *taskInput) (*struct{}, erro
 		return nil, humautil.RepoError(err)
 	}
 	return nil, nil
-}
-
-type completeTaskBody struct {
-	DoneStatus string `json:"done_status" minLength:"1"`
-}
-
-type completeTaskInput struct {
-	TaskID string `path:"taskID"`
-	Body   completeTaskBody
-}
-
-type completeTaskResp struct {
-	Completed *model.Task `json:"completed"`
-	Next      *model.Task `json:"next"`
-}
-
-type completeTaskOutput struct {
-	Body completeTaskResp
-}
-
-func (h *Handler) completeTask(ctx context.Context, input *completeTaskInput) (*completeTaskOutput, error) {
-	t, role, err := h.loadTask(ctx, input.TaskID)
-	if err != nil {
-		return nil, humautil.RepoError(err)
-	}
-	if !humautil.RequireRole(model.RoleModify, role) {
-		return nil, huma.Error403Forbidden("forbidden")
-	}
-	if strings.TrimSpace(input.Body.DoneStatus) == "" {
-		return nil, huma.Error422UnprocessableEntity("done_status is required")
-	}
-	completed, next, err := h.tasks.CompleteTask(ctx, t.ID, input.Body.DoneStatus)
-	if err != nil {
-		if errors.Is(err, repo.ErrConflict) {
-			return nil, huma.Error409Conflict("invalid done_status or missing due_date for recurring task")
-		}
-		return nil, huma.Error500InternalServerError("internal error")
-	}
-	return &completeTaskOutput{Body: completeTaskResp{Completed: completed, Next: next}}, nil
 }
 
 type subtaskListOutput struct {

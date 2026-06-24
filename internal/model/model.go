@@ -55,4 +55,6 @@ const (
 	RoleAdmin  = "admin"
 )
 
-var DefaultStatuses = []string{"todo", "in_progress", "done", "cancelled"}
+var PermanentStatuses = []string{"todo", "in_progress", "done"}
+
+var DefaultStatuses = append([]string{}, PermanentStatuses...)
