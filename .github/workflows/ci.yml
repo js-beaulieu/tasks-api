@@ -55,6 +55,10 @@ jobs:
         if: steps.filter.outputs.code == 'true'
         run: task lint
 
-      - name: Tests
+      - name: Build
         if: steps.filter.outputs.code == 'true'
-        run: task test
+        run: task build
+
+      - name: Tests with coverage
+        if: steps.filter.outputs.code == 'true'
+        run: task test:coverage:integration
