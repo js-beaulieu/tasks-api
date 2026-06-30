@@ -2,12 +2,14 @@ version: '3'
 
 tasks:
   build:
-    desc: Build all packages
+    desc: Build all workspace packages
+    dir: api/tasks
     cmds:
       - go build ./...
 
   check:
     desc: format + lint + build + test (pre-commit sanity check)
+    dir: api/tasks
     deps:
       - format
       - lint
@@ -16,62 +18,71 @@ tasks:
 
   install:
     desc: Install Go tooling and Git hooks
+    dir: api/tasks
     cmds:
       - go mod download
       - go tool lefthook install
 
   dev:
-    desc: Start the server in development (hot-reload via air)
+    desc: Start the tasks API server in development (hot-reload via air)
+    dir: api/tasks
     cmds:
       - go tool air
 
   docker:build:
-    desc: Build the Docker image
+    desc: Build the tasks API Docker image from the repo root context
     vars:
-      TAG: '{{default "tasks:latest" .TAG}}'
+      TAG: '{{default "hs-api-tasks:latest" .TAG}}'
     cmds:
-      - docker build -t {{.TAG}} .
+      - docker build -t {{.TAG}} -f api/tasks/Dockerfile .
 
   docker:run:
-    desc: Run the Docker image (--rm, port 8080)
+    desc: Run the tasks API Docker image (--rm, port 8080)
     vars:
-      TAG: '{{default "tasks:latest" .TAG}}'
+      TAG: '{{default "hs-api-tasks:latest" .TAG}}'
       PG_CONNECTION_STRING: '{{default "postgres://postgres:postgres@host.docker.internal:5432/tasks_api?sslmode=disable" .PG_CONNECTION_STRING}}'
     cmds:
       - docker run --rm --add-host=host.docker.internal:host-gateway -e PG_CONNECTION_STRING={{.PG_CONNECTION_STRING}} -p 8080:8080 {{.TAG}}
 
   compose:up:
     desc: Start local Postgres for development
+    dir: api/tasks
     cmds:
       - docker compose up -d db
 
   compose:down:
     desc: Stop local Postgres
+    dir: api/tasks
     cmds:
       - docker compose down
 
   format:
     desc: Format all Go source files
+    dir: api/tasks
     cmds:
       - gofmt -w .
 
   lint:
     desc: Run golangci-lint (pinned in go.mod, no install needed)
+    dir: api/tasks
     cmds:
       - go tool golangci-lint run
 
   test:
     desc: Run all tests (unit + integration)
+    dir: api/tasks
     cmds:
       - go tool gotestsum --junitfile report.xml -- -tags integration ./...
 
   test:coverage:
     desc: Run full test suite (unit + integration) with coverage profile
+    dir: api/tasks
     cmds:
       - task: test:coverage:integration
 
   test:coverage:check:
     desc: Check coverage.out against a threshold (default 75). Override with THRESHOLD=N.
+    dir: api/tasks
     vars:
       THRESHOLD: '{{default "75" .THRESHOLD}}'
     cmds:
@@ -79,6 +90,7 @@ tasks:
 
   test:coverage:integration:
     desc: Run integration tests (Postgres via Testcontainers) with JUnit XML report and coverage profile
+    dir: api/tasks
     vars:
       EXCLUDE:
         - internal/testing
@@ -93,6 +105,7 @@ tasks:
 
   test:coverage:unit:
     desc: Run unit tests with JUnit XML report and coverage profile
+    dir: api/tasks
     vars:
       EXCLUDE:
         - internal/testing
@@ -108,28 +121,33 @@ tasks:
 
   test:integration:
     desc: Run integration tests only (spins up Postgres with Testcontainers)
+    dir: api/tasks
     cmds:
       - go tool gotestsum --junitfile report.xml -- -tags integration ./...
 
   test:unit:
     desc: Run unit tests only (no DB)
+    dir: api/tasks
     cmds:
       - go tool gotestsum --junitfile report.xml -- ./...
 
   test:watch:
     desc: Run all tests once then watch for changes
+    dir: api/tasks
     cmds:
       - go tool gotestsum -- -tags integration ./...
       - go tool gotestsum --watch -- -tags integration ./...
 
   test:watch:integration:
     desc: Run integration tests once then watch for changes
+    dir: api/tasks
     cmds:
       - go tool gotestsum -- -tags integration ./...
       - go tool gotestsum --watch -- -tags integration ./...
 
   test:watch:unit:
     desc: Run unit tests once then watch for changes
+    dir: api/tasks
     cmds:
       - go tool gotestsum -- ./...
       - go tool gotestsum --watch -- ./...

@@ -1,6 +1,6 @@
-# tasks-api
+# hs-api-tasks
 
-Backend API for a task management application. Exposes a REST API and an [MCP](https://modelcontextprotocol.io) (Model Context Protocol) interface, backed by Postgres.
+Tasks API for the Home Stack platform. Exposes a REST API and an [MCP](https://modelcontextprotocol.io) (Model Context Protocol) interface, backed by Postgres.
 
 ## Documentation
 

@@ -1,0 +1,476 @@
+package postgres
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/google/uuid"
+
+	"github.com/js-beaulieu/hs-api/api/tasks/internal/logger"
+	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
+	"github.com/js-beaulieu/hs-api/api/tasks/internal/repo"
+)
+
+type projectStore struct{ db *sql.DB }
+
+// List returns all projects where userID is the owner or an explicit member.
+func (s *projectStore) List(ctx context.Context, userID string) ([]*model.Project, error) {
+	logger.FromCtx(ctx).Debug("listing projects", "user_id", userID)
+	rows, err := s.db.QueryContext(ctx, bind(`
+		SELECT DISTINCT p.id, p.name, p.description, p.due_date,
+		                p.owner_id, p.assignee_id, p.created_at, p.updated_at,
+		                CASE WHEN p.owner_id = ? THEN ? ELSE pm.role END AS effective_role
+		FROM projects p
+		LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
+		WHERE p.owner_id = ? OR pm.user_id = ?
+		ORDER BY p.created_at DESC`),
+		userID, model.RoleAdmin,
+		userID, userID, userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list projects: %w", err)
+	}
+	defer rows.Close()
+
+	var projects []*model.Project
+	for rows.Next() {
+		p, err := scanProject(rows)
+		if err != nil {
+			return nil, err
+		}
+		projects = append(projects, p)
+	}
+	logger.FromCtx(ctx).Debug("listed projects", "user_id", userID, "count", len(projects))
+	return projects, rows.Err()
+}
+
+// Get fetches a single project by ID. Returns repo.ErrNotFound if absent.
+func (s *projectStore) Get(ctx context.Context, id string) (*model.Project, error) {
+	logger.FromCtx(ctx).Debug("getting project", "id", id)
+	rows, err := s.db.QueryContext(ctx, bind(`
+		SELECT id, name, description, due_date,
+		       owner_id, assignee_id, created_at, updated_at,
+		       '' AS effective_role
+		FROM projects WHERE id = ?`), id)
+	if err != nil {
+		return nil, fmt.Errorf("get project: %w", err)
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("get project: %w", err)
+		}
+		logger.FromCtx(ctx).Debug("project not found", "id", id)
+		return nil, repo.ErrNotFound
+	}
+	logger.FromCtx(ctx).Debug("got project", "id", id)
+	return scanProject(rows)
+}
+
+// Create inserts a new project and seeds the 4 default statuses in one tx.
+// p.ID is always overwritten with a new UUID.
+// Additional statuses are appended after the defaults (positions 4, 5, …).
+// Any additional status that matches a default (case-sensitive) is silently skipped.
+func (s *projectStore) Create(ctx context.Context, p *model.Project, additionalStatuses ...string) error {
+	logger.FromCtx(ctx).Debug("creating project", "name", p.Name)
+	p.ID = uuid.New().String()
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	_, err = tx.ExecContext(ctx, bind(`
+		INSERT INTO projects (id, name, description, due_date, owner_id, assignee_id)
+		VALUES (?, ?, ?, ?, ?, ?)`),
+		p.ID, p.Name, p.Description, p.DueDate, p.OwnerID, p.AssigneeID,
+	)
+	if err != nil {
+		return fmt.Errorf("insert project: %w", err)
+	}
+
+	for i, status := range model.DefaultStatuses {
+		_, err = tx.ExecContext(ctx,
+			bind(`INSERT INTO project_statuses (project_id, status, position) VALUES (?, ?, ?)`),
+			p.ID, status, i,
+		)
+		if err != nil {
+			return fmt.Errorf("seed status %q: %w", status, err)
+		}
+	}
+
+	defaults := make(map[string]bool, len(model.DefaultStatuses))
+	for _, d := range model.DefaultStatuses {
+		defaults[d] = true
+	}
+	pos := len(model.DefaultStatuses)
+	for _, status := range additionalStatuses {
+		if defaults[status] {
+			continue
+		}
+		defaults[status] = true
+		_, err = tx.ExecContext(ctx,
+			bind(`INSERT INTO project_statuses (project_id, status, position) VALUES (?, ?, ?)`),
+			p.ID, status, pos,
+		)
+		if err != nil {
+			return fmt.Errorf("seed extra status %q: %w", status, err)
+		}
+		pos++
+	}
+
+	if err := tx.Commit(); err != nil {
+		logger.FromCtx(ctx).Error("failed to create project", "err", err)
+		return err
+	}
+	logger.FromCtx(ctx).Debug("created project", "id", p.ID)
+	return nil
+}
+
+// Update applies changes from p to the stored project.
+// Name is always updated. Pointer fields (Description, DueDate, AssigneeID)
+// are only updated when non-nil. updated_at is always refreshed.
+func (s *projectStore) Update(ctx context.Context, p *model.Project) error {
+	logger.FromCtx(ctx).Debug("updating project", "id", p.ID)
+	setClauses := []string{"name = ?", "updated_at = NOW()"}
+	args := []any{p.Name}
+
+	if p.Description != nil {
+		setClauses = append(setClauses, "description = ?")
+		args = append(args, *p.Description)
+	}
+	if p.DueDate != nil {
+		setClauses = append(setClauses, "due_date = ?")
+		args = append(args, *p.DueDate)
+	}
+	if p.AssigneeID != nil {
+		setClauses = append(setClauses, "assignee_id = ?")
+		args = append(args, *p.AssigneeID)
+	}
+
+	args = append(args, p.ID)
+	query := "UPDATE projects SET " + strings.Join(setClauses, ", ") + " WHERE id = ?"
+
+	_, err := s.db.ExecContext(ctx, bind(query), args...)
+	if err != nil {
+		return fmt.Errorf("update project: %w", err)
+	}
+	logger.FromCtx(ctx).Debug("updated project", "id", p.ID)
+	return nil
+}
+
+// Delete removes a project by ID. Cascade handles members, statuses, and tasks.
+func (s *projectStore) Delete(ctx context.Context, id string) error {
+	logger.FromCtx(ctx).Debug("deleting project", "id", id)
+	_, err := s.db.ExecContext(ctx, bind(`DELETE FROM projects WHERE id = ?`), id)
+	if err != nil {
+		return fmt.Errorf("delete project: %w", err)
+	}
+	logger.FromCtx(ctx).Debug("deleted project", "id", id)
+	return nil
+}
+
+// GetMemberRole returns the caller's effective role on a project.
+// The owner always has "admin" without needing a project_members row.
+// Returns repo.ErrNoAccess if the user has no membership.
+func (s *projectStore) GetMemberRole(ctx context.Context, projectID, userID string) (string, error) {
+	logger.FromCtx(ctx).Debug("getting member role", "project_id", projectID, "user_id", userID)
+	var ownerID string
+	err := s.db.QueryRowContext(ctx,
+		bind(`SELECT owner_id FROM projects WHERE id = ?`), projectID,
+	).Scan(&ownerID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", repo.ErrNotFound
+		}
+		return "", fmt.Errorf("get project owner: %w", err)
+	}
+	if ownerID == userID {
+		role := model.RoleAdmin
+		logger.FromCtx(ctx).Debug("got member role", "project_id", projectID, "user_id", userID, "role", role)
+		return role, nil
+	}
+
+	var role string
+	err = s.db.QueryRowContext(ctx,
+		bind(`SELECT role FROM project_members WHERE project_id = ? AND user_id = ?`),
+		projectID, userID,
+	).Scan(&role)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", repo.ErrNoAccess
+		}
+		return "", fmt.Errorf("get member role: %w", err)
+	}
+	logger.FromCtx(ctx).Debug("got member role", "project_id", projectID, "user_id", userID, "role", role)
+	return role, nil
+}
+
+// ListMembers returns all members of a project, including the project owner
+// as a synthetic admin member if not already present in the explicit member list.
+func (s *projectStore) ListMembers(ctx context.Context, projectID string) ([]*model.ProjectMember, error) {
+	logger.FromCtx(ctx).Debug("listing members", "project_id", projectID)
+	rows, err := s.db.QueryContext(ctx,
+		bind(`SELECT project_id, user_id, role FROM project_members WHERE project_id = ?`),
+		projectID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list members: %w", err)
+	}
+	defer rows.Close()
+
+	var members []*model.ProjectMember
+	for rows.Next() {
+		var m model.ProjectMember
+		if err := rows.Scan(&m.ProjectID, &m.UserID, &m.Role); err != nil {
+			return nil, fmt.Errorf("scan member: %w", err)
+		}
+		members = append(members, &m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list members: %w", err)
+	}
+
+	var ownerID string
+	if err := s.db.QueryRowContext(ctx,
+		bind(`SELECT owner_id FROM projects WHERE id = ?`), projectID,
+	).Scan(&ownerID); err != nil {
+		return nil, fmt.Errorf("get project owner: %w", err)
+	}
+
+	ownerPresent := false
+	for _, m := range members {
+		if m.UserID == ownerID {
+			ownerPresent = true
+			break
+		}
+	}
+	if !ownerPresent {
+		members = append(members, &model.ProjectMember{
+			ProjectID: projectID,
+			UserID:    ownerID,
+			Role:      model.RoleAdmin,
+		})
+	}
+
+	logger.FromCtx(ctx).Debug("listed members", "project_id", projectID, "count", len(members))
+	return members, nil
+}
+
+// AddMember adds a user to a project. Returns repo.ErrConflict on duplicate.
+func (s *projectStore) AddMember(ctx context.Context, m *model.ProjectMember) error {
+	logger.FromCtx(ctx).Debug("adding member", "project_id", m.ProjectID, "user_id", m.UserID, "role", m.Role)
+	_, err := s.db.ExecContext(ctx,
+		bind(`INSERT INTO project_members (project_id, user_id, role) VALUES (?, ?, ?)`),
+		m.ProjectID, m.UserID, m.Role,
+	)
+	if err != nil {
+		if isUniqueConstraint(err) {
+			return repo.ErrConflict
+		}
+		return fmt.Errorf("add member: %w", err)
+	}
+	logger.FromCtx(ctx).Debug("added member", "project_id", m.ProjectID, "user_id", m.UserID)
+	return nil
+}
+
+// UpdateMemberRole changes a member's role.
+func (s *projectStore) UpdateMemberRole(ctx context.Context, projectID, userID, role string) error {
+	logger.FromCtx(ctx).Debug("updating member role", "project_id", projectID, "user_id", userID, "role", role)
+	_, err := s.db.ExecContext(ctx,
+		bind(`UPDATE project_members SET role = ? WHERE project_id = ? AND user_id = ?`),
+		role, projectID, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("update member role: %w", err)
+	}
+	logger.FromCtx(ctx).Debug("updated member role", "project_id", projectID, "user_id", userID)
+	return nil
+}
+
+// RemoveMember removes a user from a project.
+func (s *projectStore) RemoveMember(ctx context.Context, projectID, userID string) (int, error) {
+	logger.FromCtx(ctx).Debug("removing member", "project_id", projectID, "user_id", userID)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var ownerID string
+	if err := tx.QueryRowContext(ctx,
+		bind(`SELECT owner_id FROM projects WHERE id = ?`), projectID,
+	).Scan(&ownerID); err != nil {
+		return 0, fmt.Errorf("get project owner: %w", err)
+	}
+
+	res, err := tx.ExecContext(ctx,
+		bind(`UPDATE tasks SET assignee_id = ?, updated_at = NOW()
+		      WHERE project_id = ? AND assignee_id = ?`),
+		ownerID, projectID, userID,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("reassign tasks: %w", err)
+	}
+	reassigned, _ := res.RowsAffected()
+
+	_, err = tx.ExecContext(ctx,
+		bind(`DELETE FROM project_members WHERE project_id = ? AND user_id = ?`),
+		projectID, userID,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("remove member: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit: %w", err)
+	}
+
+	logger.FromCtx(ctx).Debug("removed member", "project_id", projectID, "user_id", userID, "reassigned", reassigned)
+	return int(reassigned), nil
+}
+
+// ListStatuses returns project statuses ordered by position.
+func (s *projectStore) ListStatuses(ctx context.Context, projectID string) ([]*model.ProjectStatus, error) {
+	logger.FromCtx(ctx).Debug("listing statuses", "project_id", projectID)
+	rows, err := s.db.QueryContext(ctx,
+		bind(`SELECT project_id, status, position FROM project_statuses
+		 WHERE project_id = ? ORDER BY position`),
+		projectID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list statuses: %w", err)
+	}
+	defer rows.Close()
+
+	var statuses []*model.ProjectStatus
+	for rows.Next() {
+		var ps model.ProjectStatus
+		if err := rows.Scan(&ps.ProjectID, &ps.Status, &ps.Position); err != nil {
+			return nil, fmt.Errorf("scan status: %w", err)
+		}
+		statuses = append(statuses, &ps)
+	}
+	logger.FromCtx(ctx).Debug("listed statuses", "project_id", projectID, "count", len(statuses))
+	return statuses, rows.Err()
+}
+
+// AddStatus appends a new status at the end of the project's status list.
+func (s *projectStore) AddStatus(ctx context.Context, projectID, status string) error {
+	logger.FromCtx(ctx).Debug("adding status", "project_id", projectID, "status", status)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := lockProjectStatuses(ctx, tx, projectID); err != nil {
+		return err
+	}
+
+	var newPos int
+	err = tx.QueryRowContext(ctx,
+		bind(`SELECT COALESCE(MAX(position)+1, 0) FROM project_statuses WHERE project_id = ?`),
+		projectID,
+	).Scan(&newPos)
+	if err != nil {
+		return fmt.Errorf("compute position: %w", err)
+	}
+
+	_, err = tx.ExecContext(ctx,
+		bind(`INSERT INTO project_statuses (project_id, status, position) VALUES (?, ?, ?)`),
+		projectID, status, newPos,
+	)
+	if err != nil {
+		if isUniqueConstraint(err) {
+			return repo.ErrConflict
+		}
+		return fmt.Errorf("insert status: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	logger.FromCtx(ctx).Debug("added status", "project_id", projectID, "status", status)
+	return nil
+}
+
+// DeleteStatus removes a status from a project.
+// Returns repo.ErrConflict if any tasks currently use that status.
+func (s *projectStore) DeleteStatus(ctx context.Context, projectID, status string) error {
+	logger.FromCtx(ctx).Debug("deleting status", "project_id", projectID, "status", status)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := lockProjectStatuses(ctx, tx, projectID); err != nil {
+		return err
+	}
+
+	var count int
+	err = tx.QueryRowContext(ctx,
+		bind(`SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = ?`),
+		projectID, status,
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("count tasks: %w", err)
+	}
+	if count > 0 {
+		return repo.ErrConflict
+	}
+
+	var deletedPosition int
+	err = tx.QueryRowContext(ctx,
+		bind(`SELECT position FROM project_statuses WHERE project_id = ? AND status = ?`),
+		projectID, status,
+	).Scan(&deletedPosition)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return repo.ErrNotFound
+		}
+		return fmt.Errorf("load status position: %w", err)
+	}
+
+	_, err = tx.ExecContext(ctx,
+		bind(`DELETE FROM project_statuses WHERE project_id = ? AND status = ?`),
+		projectID, status,
+	)
+	if err != nil {
+		return fmt.Errorf("delete status: %w", err)
+	}
+
+	if _, err = tx.ExecContext(ctx,
+		bind(`UPDATE project_statuses SET position = position - 1 WHERE project_id = ? AND position > ?`),
+		projectID, deletedPosition,
+	); err != nil {
+		return fmt.Errorf("compact status positions: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	logger.FromCtx(ctx).Debug("deleted status", "project_id", projectID, "status", status)
+	return nil
+}
+
+// scanProject reads a project row from a *sql.Rows scanner.
+func scanProject(rows *sql.Rows) (*model.Project, error) {
+	var p model.Project
+	err := rows.Scan(
+		&p.ID, &p.Name, &p.Description, &p.DueDate,
+		&p.OwnerID, &p.AssigneeID, &p.CreatedAt, &p.UpdatedAt,
+		&p.EffectiveRole,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("scan project: %w", err)
+	}
+	return &p, nil
+}
