@@ -1,0 +1,176 @@
+package postgres
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/lib/pq"
+
+	"github.com/js-beaulieu/hs-api/api/tasks/internal/logger"
+	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
+	"github.com/js-beaulieu/hs-api/api/tasks/internal/repo"
+)
+
+type userStore struct {
+	db *sql.DB
+}
+
+// GetByID fetches a user by ID. Returns repo.ErrNotFound if no row exists.
+func (s *userStore) GetByID(ctx context.Context, id string) (*model.User, error) {
+	logger.FromCtx(ctx).Debug("getting user", "id", id)
+	row := s.db.QueryRowContext(ctx,
+		bind(`SELECT id, name, email, created_at FROM users WHERE id = ?`), id)
+	u, err := scanUser(row)
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			logger.FromCtx(ctx).Debug("user not found", "id", id)
+		}
+		return nil, err
+	}
+	logger.FromCtx(ctx).Debug("got user", "id", id)
+	return u, nil
+}
+
+// Create inserts a new user. Returns repo.ErrConflict if a user with the same
+// ID already exists.
+func (s *userStore) Create(ctx context.Context, id, name, email string) (*model.User, error) {
+	logger.FromCtx(ctx).Debug("creating user", "id", id)
+	_, err := s.db.ExecContext(ctx,
+		bind(`INSERT INTO users (id, name, email) VALUES (?, ?, ?)`),
+		id, name, email)
+	if err != nil {
+		if isUniqueConstraint(err) {
+			return nil, repo.ErrConflict
+		}
+		return nil, fmt.Errorf("insert user: %w", err)
+	}
+	logger.FromCtx(ctx).Debug("created user", "id", id)
+	return s.GetByID(ctx, id)
+}
+
+// Update replaces the name and email of an existing user.
+// Returns repo.ErrNotFound if no user with that ID exists.
+// Returns repo.ErrConflict if the new email is already taken.
+func (s *userStore) Update(ctx context.Context, u *model.User) error {
+	logger.FromCtx(ctx).Debug("updating user", "id", u.ID)
+	res, err := s.db.ExecContext(ctx,
+		bind(`UPDATE users SET name = ?, email = ? WHERE id = ?`),
+		u.Name, u.Email, u.ID)
+	if err != nil {
+		if isUniqueConstraint(err) {
+			return repo.ErrConflict
+		}
+		return fmt.Errorf("update user: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if n == 0 {
+		return repo.ErrNotFound
+	}
+	logger.FromCtx(ctx).Debug("updated user", "id", u.ID)
+	return nil
+}
+
+// Delete removes a user by ID.
+// Returns repo.ErrNotFound if no user with that ID exists.
+// Returns repo.ErrConflict if the user still owns projects or tasks (FK RESTRICT).
+func (s *userStore) Delete(ctx context.Context, id string) error {
+	logger.FromCtx(ctx).Debug("deleting user", "id", id)
+	res, err := s.db.ExecContext(ctx, bind(`DELETE FROM users WHERE id = ?`), id)
+	if err != nil {
+		if isForeignKeyConstraint(err) {
+			return repo.ErrConflict
+		}
+		return fmt.Errorf("delete user: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if n == 0 {
+		return repo.ErrNotFound
+	}
+	logger.FromCtx(ctx).Debug("deleted user", "id", id)
+	return nil
+}
+
+func (s *userStore) ListByIDs(ctx context.Context, ids []string) ([]*model.User, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	logger.FromCtx(ctx).Debug("listing users by IDs", "count", len(ids))
+	rows, err := s.db.QueryContext(ctx,
+		bind(`SELECT id, name, email, created_at FROM users WHERE id = ANY(?)`),
+		pq.Array(ids))
+	if err != nil {
+		return nil, fmt.Errorf("query users by IDs: %w", err)
+	}
+	defer rows.Close()
+	var users []*model.User
+	for rows.Next() {
+		var u model.User
+		if err := rows.Scan(&u.ID, &u.Name, &u.Email, &u.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		users = append(users, &u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate users: %w", err)
+	}
+	return users, nil
+}
+
+func (s *userStore) Search(ctx context.Context, query string, limit int) ([]*model.User, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	logger.FromCtx(ctx).Debug("searching users", "query", query, "limit", limit)
+	escaped := escapeLike(query)
+	pattern := "%" + escaped + "%"
+	rows, err := s.db.QueryContext(ctx,
+		bind(`SELECT id, name, email, created_at FROM users
+		      WHERE name ILIKE ? OR email ILIKE ?
+		      ORDER BY name LIMIT ?`),
+		pattern, pattern, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("search users: %w", err)
+	}
+	defer rows.Close()
+	var users []*model.User
+	for rows.Next() {
+		var u model.User
+		if err := rows.Scan(&u.ID, &u.Name, &u.Email, &u.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		users = append(users, &u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate users: %w", err)
+	}
+	return users, nil
+}
+
+func scanUser(row *sql.Row) (*model.User, error) {
+	var u model.User
+	err := row.Scan(&u.ID, &u.Name, &u.Email, &u.CreatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, repo.ErrNotFound
+		}
+		return nil, fmt.Errorf("scan user: %w", err)
+	}
+	return &u, nil
+}
+
+func escapeLike(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `%`, `\%`)
+	s = strings.ReplaceAll(s, `_`, `\_`)
+	return s
+}

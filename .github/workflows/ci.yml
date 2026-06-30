@@ -23,17 +23,17 @@ jobs:
           filters: |
             code:
               - '**/*.go'
-              - 'go.mod'
-              - 'go.sum'
+              - 'api/tasks/go.mod'
+              - 'api/tasks/go.sum'
               - 'Taskfile.yml'
-              - 'Dockerfile'
+              - 'api/tasks/Dockerfile'
               - '.dockerignore'
               - '.github/**'
 
       - uses: actions/setup-go@v5
         if: steps.filter.outputs.code == 'true'
         with:
-          go-version-file: go.mod
+          go-version-file: api/tasks/go.mod
           cache: false
 
       - uses: actions/cache@v4
@@ -42,7 +42,7 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          key: go-${{ runner.os }}-${{ hashFiles('api/tasks/go.sum') }}
           restore-keys: go-${{ runner.os }}-
 
       - name: Install Task

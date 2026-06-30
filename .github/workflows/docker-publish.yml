@@ -22,8 +22,9 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
+          file: api/tasks/Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository }}:latest
+          tags: ghcr.io/js-beaulieu/hs-api-tasks:latest
 
       - name: Trigger Watchtower update
         run: |
