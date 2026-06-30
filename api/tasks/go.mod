@@ -289,7 +289,4 @@ require (
 
 tool github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 
-tool (
-	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
-	gotest.tools/gotestsum
-)
+tool gotest.tools/gotestsum
