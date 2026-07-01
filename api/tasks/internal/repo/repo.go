@@ -4,13 +4,6 @@ import (
 	"context"
 
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
-	repoerr "github.com/js-beaulieu/hs-api/libs/hs-common/repo"
-)
-
-var (
-	ErrNotFound = repoerr.ErrNotFound
-	ErrNoAccess = repoerr.ErrNoAccess
-	ErrConflict = repoerr.ErrConflict
 )
 
 type UserRepo interface {

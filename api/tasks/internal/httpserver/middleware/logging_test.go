@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/js-beaulieu/hs-api/api/tasks/internal/config"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/middleware"
-	"github.com/js-beaulieu/hs-api/libs/hs-common/config"
 	"github.com/js-beaulieu/hs-api/libs/hs-common/logger"
 )
 

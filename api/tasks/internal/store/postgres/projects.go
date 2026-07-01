@@ -10,8 +10,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/repo"
 	"github.com/js-beaulieu/hs-api/libs/hs-common/logger"
+	repoerr "github.com/js-beaulieu/hs-api/libs/hs-common/repo"
 )
 
 type projectStore struct{ db *sql.DB }
@@ -47,7 +47,7 @@ func (s *projectStore) List(ctx context.Context, userID string) ([]*model.Projec
 	return projects, rows.Err()
 }
 
-// Get fetches a single project by ID. Returns repo.ErrNotFound if absent.
+// Get fetches a single project by ID. Returns repoerr.ErrNotFound if absent.
 func (s *projectStore) Get(ctx context.Context, id string) (*model.Project, error) {
 	logger.FromCtx(ctx).Debug("getting project", "id", id)
 	rows, err := s.db.QueryContext(ctx, bind(`
@@ -65,7 +65,7 @@ func (s *projectStore) Get(ctx context.Context, id string) (*model.Project, erro
 			return nil, fmt.Errorf("get project: %w", err)
 		}
 		logger.FromCtx(ctx).Debug("project not found", "id", id)
-		return nil, repo.ErrNotFound
+		return nil, repoerr.ErrNotFound
 	}
 	logger.FromCtx(ctx).Debug("got project", "id", id)
 	return scanProject(rows)
@@ -177,7 +177,7 @@ func (s *projectStore) Delete(ctx context.Context, id string) error {
 
 // GetMemberRole returns the caller's effective role on a project.
 // The owner always has "admin" without needing a project_members row.
-// Returns repo.ErrNoAccess if the user has no membership.
+// Returns repoerr.ErrNoAccess if the user has no membership.
 func (s *projectStore) GetMemberRole(ctx context.Context, projectID, userID string) (string, error) {
 	logger.FromCtx(ctx).Debug("getting member role", "project_id", projectID, "user_id", userID)
 	var ownerID string
@@ -186,7 +186,7 @@ func (s *projectStore) GetMemberRole(ctx context.Context, projectID, userID stri
 	).Scan(&ownerID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", repo.ErrNotFound
+			return "", repoerr.ErrNotFound
 		}
 		return "", fmt.Errorf("get project owner: %w", err)
 	}
@@ -203,7 +203,7 @@ func (s *projectStore) GetMemberRole(ctx context.Context, projectID, userID stri
 	).Scan(&role)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", repo.ErrNoAccess
+			return "", repoerr.ErrNoAccess
 		}
 		return "", fmt.Errorf("get member role: %w", err)
 	}
@@ -262,7 +262,7 @@ func (s *projectStore) ListMembers(ctx context.Context, projectID string) ([]*mo
 	return members, nil
 }
 
-// AddMember adds a user to a project. Returns repo.ErrConflict on duplicate.
+// AddMember adds a user to a project. Returns repoerr.ErrConflict on duplicate.
 func (s *projectStore) AddMember(ctx context.Context, m *model.ProjectMember) error {
 	logger.FromCtx(ctx).Debug("adding member", "project_id", m.ProjectID, "user_id", m.UserID, "role", m.Role)
 	_, err := s.db.ExecContext(ctx,
@@ -271,7 +271,7 @@ func (s *projectStore) AddMember(ctx context.Context, m *model.ProjectMember) er
 	)
 	if err != nil {
 		if isUniqueConstraint(err) {
-			return repo.ErrConflict
+			return repoerr.ErrConflict
 		}
 		return fmt.Errorf("add member: %w", err)
 	}
@@ -389,7 +389,7 @@ func (s *projectStore) AddStatus(ctx context.Context, projectID, status string) 
 	)
 	if err != nil {
 		if isUniqueConstraint(err) {
-			return repo.ErrConflict
+			return repoerr.ErrConflict
 		}
 		return fmt.Errorf("insert status: %w", err)
 	}
@@ -402,7 +402,7 @@ func (s *projectStore) AddStatus(ctx context.Context, projectID, status string) 
 }
 
 // DeleteStatus removes a status from a project.
-// Returns repo.ErrConflict if any tasks currently use that status.
+// Returns repoerr.ErrConflict if any tasks currently use that status.
 func (s *projectStore) DeleteStatus(ctx context.Context, projectID, status string) error {
 	logger.FromCtx(ctx).Debug("deleting status", "project_id", projectID, "status", status)
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -424,7 +424,7 @@ func (s *projectStore) DeleteStatus(ctx context.Context, projectID, status strin
 		return fmt.Errorf("count tasks: %w", err)
 	}
 	if count > 0 {
-		return repo.ErrConflict
+		return repoerr.ErrConflict
 	}
 
 	var deletedPosition int
@@ -434,7 +434,7 @@ func (s *projectStore) DeleteStatus(ctx context.Context, projectID, status strin
 	).Scan(&deletedPosition)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return repo.ErrNotFound
+			return repoerr.ErrNotFound
 		}
 		return fmt.Errorf("load status position: %w", err)
 	}

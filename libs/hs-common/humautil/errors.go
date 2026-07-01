@@ -9,12 +9,7 @@ import (
 	"github.com/teambition/rrule-go"
 
 	"github.com/js-beaulieu/hs-api/libs/hs-common/repo"
-	"github.com/js-beaulieu/hs-api/libs/hs-common/role"
 )
-
-// Rank must be populated by each service with its own role names.
-// The tasks API assigns it from model.RoleRead/RoleModify/RoleAdmin in server wiring.
-var Rank = role.Rank{}
 
 // RepoError converts a repository sentinel error into a Huma status error.
 func RepoError(err error) error {
@@ -26,12 +21,6 @@ func RepoError(err error) error {
 	}
 	return huma.Error500InternalServerError("internal error")
 }
-
-// RequireRole returns true if actual meets or exceeds min according to the shared rank map.
-func RequireRole(min, actual string) bool { return Rank.Require(min, actual) }
-
-// ValidRole reports whether the rank map defines the given role.
-func ValidRole(r string) bool { return Rank.Valid(r) }
 
 // ValidateRecurrence checks that a recurrence rule string is valid and that
 // recurring tasks have a due_date. It is shared because recurrence rule parsing

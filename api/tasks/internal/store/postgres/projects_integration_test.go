@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/repo"
 	testdb "github.com/js-beaulieu/hs-api/api/tasks/internal/testing/db"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/testing/seed"
+	repoerr "github.com/js-beaulieu/hs-api/libs/hs-common/repo"
 )
 
 // ---- CreateProject additional statuses ----
@@ -135,8 +135,8 @@ func TestProjects_CreateGet(t *testing.T) {
 func TestProjects_Get_NotFound(t *testing.T) {
 	_, store := testdb.Open(t)
 	_, err := store.Projects.Get(context.Background(), "no-such-id")
-	if err != repo.ErrNotFound {
-		t.Errorf("err = %v, want repo.ErrNotFound", err)
+	if err != repoerr.ErrNotFound {
+		t.Errorf("err = %v, want repoerr.ErrNotFound", err)
 	}
 }
 
@@ -236,8 +236,8 @@ func TestProjects_Delete(t *testing.T) {
 	}
 
 	_, err := store.Projects.Get(ctx, p.ID)
-	if err != repo.ErrNotFound {
-		t.Errorf("err = %v, want repo.ErrNotFound after Delete", err)
+	if err != repoerr.ErrNotFound {
+		t.Errorf("err = %v, want repoerr.ErrNotFound after Delete", err)
 	}
 }
 
@@ -262,8 +262,8 @@ func TestProjects_GetMemberRole(t *testing.T) {
 
 	t.Run("non-member returns ErrNoAccess", func(t *testing.T) {
 		_, err := store.Projects.GetMemberRole(ctx, p.ID, outsider.ID)
-		if err != repo.ErrNoAccess {
-			t.Errorf("err = %v, want repo.ErrNoAccess", err)
+		if err != repoerr.ErrNoAccess {
+			t.Errorf("err = %v, want repoerr.ErrNoAccess", err)
 		}
 	})
 }
@@ -321,8 +321,8 @@ func TestProjects_Members(t *testing.T) {
 			t.Errorf("reassigned = %d, want 0", reassigned)
 		}
 		_, err = store.Projects.GetMemberRole(ctx, p.ID, userC.ID)
-		if err != repo.ErrNoAccess {
-			t.Errorf("err = %v, want repo.ErrNoAccess after RemoveMember", err)
+		if err != repoerr.ErrNoAccess {
+			t.Errorf("err = %v, want repoerr.ErrNoAccess after RemoveMember", err)
 		}
 	})
 
@@ -332,8 +332,8 @@ func TestProjects_Members(t *testing.T) {
 		if err := store.Projects.AddMember(ctx, m); err != nil {
 			t.Fatalf("first AddMember: %v", err)
 		}
-		if err := store.Projects.AddMember(ctx, m); err != repo.ErrConflict {
-			t.Errorf("duplicate AddMember: err = %v, want repo.ErrConflict", err)
+		if err := store.Projects.AddMember(ctx, m); err != repoerr.ErrConflict {
+			t.Errorf("duplicate AddMember: err = %v, want repoerr.ErrConflict", err)
 		}
 	})
 
@@ -505,8 +505,8 @@ func TestProjects_Statuses(t *testing.T) {
 		if err != nil {
 			t.Fatalf("insert raw task: %v", err)
 		}
-		if err := store.Projects.DeleteStatus(ctx, p.ID, "todo"); err != repo.ErrConflict {
-			t.Errorf("err = %v, want repo.ErrConflict", err)
+		if err := store.Projects.DeleteStatus(ctx, p.ID, "todo"); err != repoerr.ErrConflict {
+			t.Errorf("err = %v, want repoerr.ErrConflict", err)
 		}
 	})
 }

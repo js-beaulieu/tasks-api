@@ -7,23 +7,27 @@ import (
 	"os"
 
 	"github.com/lmittmann/tint"
-
-	"github.com/js-beaulieu/hs-api/libs/hs-common/config"
 )
 
 type ctxKey struct{}
 
+// Options holds the narrow configuration needed to build a logger.
+type Options struct {
+	Format string
+	Level  slog.Level
+}
+
 // New creates a configured *slog.Logger, sets it as the default, and returns it.
-func New(cfg config.Config) *slog.Logger {
+func New(opts Options) *slog.Logger {
 	var handler slog.Handler
-	if cfg.LogFormat == "pretty" {
+	if opts.Format == "pretty" {
 		handler = tint.NewHandler(os.Stdout, &tint.Options{
-			Level:     cfg.LogLevel,
+			Level:     opts.Level,
 			AddSource: true,
 		})
 	} else {
 		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-			Level:     cfg.LogLevel,
+			Level:     opts.Level,
 			AddSource: true,
 		})
 	}

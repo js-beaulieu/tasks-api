@@ -9,12 +9,12 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/js-beaulieu/hs-api/api/tasks/internal/config"
 	httpmdw "github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/middleware"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/mcpserver"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/store/postgres"
 	testdb "github.com/js-beaulieu/hs-api/api/tasks/internal/testing/db"
-	"github.com/js-beaulieu/hs-api/libs/hs-common/config"
 )
 
 type Env struct {

@@ -1,5 +1,4 @@
-// Package config provides lightweight environment-based configuration loading
-// for Home Stack API services.
+// Package config holds the concrete, app-local environment configuration for the tasks API.
 package config
 
 import (
@@ -8,7 +7,7 @@ import (
 	"strconv"
 )
 
-// Config holds common runtime settings for an API service.
+// Config holds runtime settings for the tasks API.
 type Config struct {
 	Port               string
 	PGConnectionString string

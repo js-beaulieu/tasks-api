@@ -10,22 +10,22 @@ import (
 	"github.com/lib/pq"
 
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/repo"
 	"github.com/js-beaulieu/hs-api/libs/hs-common/logger"
+	repoerr "github.com/js-beaulieu/hs-api/libs/hs-common/repo"
 )
 
 type userStore struct {
 	db *sql.DB
 }
 
-// GetByID fetches a user by ID. Returns repo.ErrNotFound if no row exists.
+// GetByID fetches a user by ID. Returns repoerr.ErrNotFound if no row exists.
 func (s *userStore) GetByID(ctx context.Context, id string) (*model.User, error) {
 	logger.FromCtx(ctx).Debug("getting user", "id", id)
 	row := s.db.QueryRowContext(ctx,
 		bind(`SELECT id, name, email, created_at FROM users WHERE id = ?`), id)
 	u, err := scanUser(row)
 	if err != nil {
-		if errors.Is(err, repo.ErrNotFound) {
+		if errors.Is(err, repoerr.ErrNotFound) {
 			logger.FromCtx(ctx).Debug("user not found", "id", id)
 		}
 		return nil, err
@@ -34,7 +34,7 @@ func (s *userStore) GetByID(ctx context.Context, id string) (*model.User, error)
 	return u, nil
 }
 
-// Create inserts a new user. Returns repo.ErrConflict if a user with the same
+// Create inserts a new user. Returns repoerr.ErrConflict if a user with the same
 // ID already exists.
 func (s *userStore) Create(ctx context.Context, id, name, email string) (*model.User, error) {
 	logger.FromCtx(ctx).Debug("creating user", "id", id)
@@ -43,7 +43,7 @@ func (s *userStore) Create(ctx context.Context, id, name, email string) (*model.
 		id, name, email)
 	if err != nil {
 		if isUniqueConstraint(err) {
-			return nil, repo.ErrConflict
+			return nil, repoerr.ErrConflict
 		}
 		return nil, fmt.Errorf("insert user: %w", err)
 	}
@@ -52,8 +52,8 @@ func (s *userStore) Create(ctx context.Context, id, name, email string) (*model.
 }
 
 // Update replaces the name and email of an existing user.
-// Returns repo.ErrNotFound if no user with that ID exists.
-// Returns repo.ErrConflict if the new email is already taken.
+// Returns repoerr.ErrNotFound if no user with that ID exists.
+// Returns repoerr.ErrConflict if the new email is already taken.
 func (s *userStore) Update(ctx context.Context, u *model.User) error {
 	logger.FromCtx(ctx).Debug("updating user", "id", u.ID)
 	res, err := s.db.ExecContext(ctx,
@@ -61,7 +61,7 @@ func (s *userStore) Update(ctx context.Context, u *model.User) error {
 		u.Name, u.Email, u.ID)
 	if err != nil {
 		if isUniqueConstraint(err) {
-			return repo.ErrConflict
+			return repoerr.ErrConflict
 		}
 		return fmt.Errorf("update user: %w", err)
 	}
@@ -70,21 +70,21 @@ func (s *userStore) Update(ctx context.Context, u *model.User) error {
 		return fmt.Errorf("rows affected: %w", err)
 	}
 	if n == 0 {
-		return repo.ErrNotFound
+		return repoerr.ErrNotFound
 	}
 	logger.FromCtx(ctx).Debug("updated user", "id", u.ID)
 	return nil
 }
 
 // Delete removes a user by ID.
-// Returns repo.ErrNotFound if no user with that ID exists.
-// Returns repo.ErrConflict if the user still owns projects or tasks (FK RESTRICT).
+// Returns repoerr.ErrNotFound if no user with that ID exists.
+// Returns repoerr.ErrConflict if the user still owns projects or tasks (FK RESTRICT).
 func (s *userStore) Delete(ctx context.Context, id string) error {
 	logger.FromCtx(ctx).Debug("deleting user", "id", id)
 	res, err := s.db.ExecContext(ctx, bind(`DELETE FROM users WHERE id = ?`), id)
 	if err != nil {
 		if isForeignKeyConstraint(err) {
-			return repo.ErrConflict
+			return repoerr.ErrConflict
 		}
 		return fmt.Errorf("delete user: %w", err)
 	}
@@ -93,7 +93,7 @@ func (s *userStore) Delete(ctx context.Context, id string) error {
 		return fmt.Errorf("rows affected: %w", err)
 	}
 	if n == 0 {
-		return repo.ErrNotFound
+		return repoerr.ErrNotFound
 	}
 	logger.FromCtx(ctx).Debug("deleted user", "id", id)
 	return nil
@@ -161,7 +161,7 @@ func scanUser(row *sql.Row) (*model.User, error) {
 	err := row.Scan(&u.ID, &u.Name, &u.Email, &u.CreatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, repo.ErrNotFound
+			return nil, repoerr.ErrNotFound
 		}
 		return nil, fmt.Errorf("scan user: %w", err)
 	}

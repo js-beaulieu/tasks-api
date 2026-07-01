@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/js-beaulieu/hs-api/api/tasks/internal/config"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/store/postgres"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/testing/mock"
-	"github.com/js-beaulieu/hs-api/libs/hs-common/config"
 )
 
 func TestNew(t *testing.T) {

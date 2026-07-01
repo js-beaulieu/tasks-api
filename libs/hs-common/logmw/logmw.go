@@ -10,7 +10,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/js-beaulieu/hs-api/libs/hs-common/config"
 	"github.com/js-beaulieu/hs-api/libs/hs-common/logger"
 )
 
@@ -39,8 +38,13 @@ func (rw *loggingResponseWriter) Unwrap() http.ResponseWriter {
 	return rw.ResponseWriter
 }
 
+// Options holds the narrow configuration needed by the logging middleware.
+type Options struct {
+	Detailed bool
+}
+
 // Middleware logs request/response metadata and injects a request-scoped logger.
-func Middleware(cfg config.Config) func(http.Handler) http.Handler {
+func Middleware(opts Options) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			requestID := r.Header.Get("X-Request-ID")
@@ -62,16 +66,16 @@ func Middleware(cfg config.Config) func(http.Handler) http.Handler {
 			if isSSE {
 				log.InfoContext(ctx, "→ SSE stream opened")
 			} else {
-				if cfg.LogDetailed && r.Body != nil {
+				if opts.Detailed && r.Body != nil {
 					body, _ := io.ReadAll(r.Body)
 					r.Body = io.NopCloser(bytes.NewReader(body))
 					log.DebugContext(ctx, "→ request", "body", string(body))
 				} else {
 					log.DebugContext(ctx, "→ request")
 				}
-				if cfg.LogDetailed {
-					respBuf = &bytes.Buffer{}
-				}
+			if opts.Detailed {
+				respBuf = &bytes.Buffer{}
+			}
 			}
 			rw := &loggingResponseWriter{ResponseWriter: w, status: http.StatusOK, body: respBuf}
 			start := time.Now()
@@ -86,8 +90,8 @@ func Middleware(cfg config.Config) func(http.Handler) http.Handler {
 				} else if rw.status >= 400 {
 					level = slog.LevelWarn
 				}
-				if cfg.LogDetailed {
-					log.Log(ctx, level, "← response",
+			if opts.Detailed {
+				log.Log(ctx, level, "← response",
 						"status", rw.status,
 						"duration_ms", time.Since(start).Milliseconds(),
 						"bytes", rw.written,

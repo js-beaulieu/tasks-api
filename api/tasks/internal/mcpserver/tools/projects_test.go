@@ -9,8 +9,8 @@ import (
 
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/middleware"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/repo"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/testing/mock"
+	repoerr "github.com/js-beaulieu/hs-api/libs/hs-common/repo"
 )
 
 func testUserCtx() context.Context {
@@ -146,7 +146,7 @@ func TestGetProjectHandler(t *testing.T) {
 	t.Run("not found returns ErrNotFound error", func(t *testing.T) {
 		pr := &mock.ProjectRepo{
 			GetFn: func(_ context.Context, _ string) (*model.Project, error) {
-				return nil, repo.ErrNotFound
+				return nil, repoerr.ErrNotFound
 			},
 		}
 		handler := GetProjectHandler(pr)
@@ -154,8 +154,8 @@ func TestGetProjectHandler(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error")
 		}
-		if !errors.Is(err, repo.ErrNotFound) {
-			t.Errorf("err = %v, want wrapping repo.ErrNotFound", err)
+		if !errors.Is(err, repoerr.ErrNotFound) {
+			t.Errorf("err = %v, want wrapping repoerr.ErrNotFound", err)
 		}
 	})
 
@@ -250,7 +250,7 @@ func TestUpdateProjectHandler(t *testing.T) {
 			GetFn: func(_ context.Context, id string) (*model.Project, error) {
 				return &model.Project{ID: id, Name: "P", OwnerID: "u1"}, nil
 			},
-			DeleteStatusFn: func(_ context.Context, _, _ string) error { return repo.ErrConflict },
+			DeleteStatusFn: func(_ context.Context, _, _ string) error { return repoerr.ErrConflict },
 		}
 		handler := UpdateProjectHandler(pr)
 		_, _, err := handler(testUserCtx(), &mcp.CallToolRequest{}, updateProjectInput{
@@ -260,8 +260,8 @@ func TestUpdateProjectHandler(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error")
 		}
-		if !errors.Is(err, repo.ErrConflict) {
-			t.Errorf("err = %v, want wrapping repo.ErrConflict", err)
+		if !errors.Is(err, repoerr.ErrConflict) {
+			t.Errorf("err = %v, want wrapping repoerr.ErrConflict", err)
 		}
 	})
 

@@ -15,6 +15,7 @@ import (
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/repo"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/testing/mock"
 	humatest "github.com/js-beaulieu/hs-api/libs/hs-common/huma"
+	repoerr "github.com/js-beaulieu/hs-api/libs/hs-common/repo"
 )
 
 var testUser = &model.User{ID: "user-1", Name: "Alice", Email: "alice@example.com"}
@@ -109,7 +110,7 @@ func TestGetTask(t *testing.T) {
 	t.Run("GET /task-1 not found returns 404", func(t *testing.T) {
 		tr := &mock.TaskRepo{
 			GetFn: func(_ context.Context, _ string) (*model.Task, error) {
-				return nil, repo.ErrNotFound
+				return nil, repoerr.ErrNotFound
 			},
 		}
 		handler := newHandler(
@@ -150,7 +151,7 @@ func TestPatchTask(t *testing.T) {
 				if projectID == "proj-1" {
 					return model.RoleModify, nil
 				}
-				return "", repo.ErrNoAccess
+				return "", repoerr.ErrNoAccess
 			},
 		}
 		handler := newHandler(pr, tr, &mock.TagRepo{})
@@ -236,7 +237,7 @@ func TestPatchTask(t *testing.T) {
 	t.Run("PATCH with invalid status returns 409", func(t *testing.T) {
 		tr := taskRepoFound()
 		tr.UpdateFn = func(_ context.Context, _ *model.Task) (*model.Task, *string, error) {
-			return nil, nil, repo.ErrConflict
+			return nil, nil, repoerr.ErrConflict
 		}
 		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
 		w := serve(handler, newRequest(http.MethodPatch, "/task-1", map[string]any{
@@ -396,7 +397,7 @@ func TestDeleteTaskExtra(t *testing.T) {
 
 	t.Run("DELETE /{id} not found (race) returns 404", func(t *testing.T) {
 		tr := taskRepoFound()
-		tr.DeleteFn = func(_ context.Context, _ string) error { return repo.ErrNotFound }
+		tr.DeleteFn = func(_ context.Context, _ string) error { return repoerr.ErrNotFound }
 		handler := newHandler(projectRepoWithRole(model.RoleModify), tr, &mock.TagRepo{})
 		w := serve(handler, newRequest(http.MethodDelete, "/task-1", nil))
 		if w.Code != http.StatusNotFound {

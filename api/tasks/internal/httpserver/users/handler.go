@@ -10,6 +10,7 @@ import (
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/middleware"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/repo"
+	repoerr "github.com/js-beaulieu/hs-api/libs/hs-common/repo"
 )
 
 type Handler struct {
@@ -89,7 +90,7 @@ type userOutput struct {
 func (h *Handler) getByID(ctx context.Context, input *getByIDInput) (*userOutput, error) {
 	u, err := h.users.GetByID(ctx, input.UserID)
 	if err != nil {
-		if errors.Is(err, repo.ErrNotFound) {
+		if errors.Is(err, repoerr.ErrNotFound) {
 			return nil, huma.Error404NotFound("not found")
 		}
 		return nil, huma.Error500InternalServerError("internal error")
@@ -121,7 +122,7 @@ func (h *Handler) updateMe(ctx context.Context, input *updateMeInput) (*userOutp
 		u.Email = *input.Body.Email
 	}
 	if err := h.users.Update(ctx, u); err != nil {
-		if errors.Is(err, repo.ErrConflict) {
+		if errors.Is(err, repoerr.ErrConflict) {
 			return nil, huma.Error409Conflict("email already in use")
 		}
 		return nil, huma.Error500InternalServerError("internal error")
