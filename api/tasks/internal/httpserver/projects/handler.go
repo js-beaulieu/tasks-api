@@ -9,10 +9,10 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/humautil"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/middleware"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/repo"
+	"github.com/js-beaulieu/hs-api/libs/hs-common/humautil"
 )
 
 func isPermanentStatus(status string) bool {

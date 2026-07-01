@@ -12,8 +12,8 @@ import (
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/middleware"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/users"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
-	httptestutil "github.com/js-beaulieu/hs-api/api/tasks/internal/testing/http"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/testing/mock"
+	humatest "github.com/js-beaulieu/hs-api/libs/hs-common/huma"
 )
 
 // authed wraps a handler with AuthMiddleware backed by the given mock.
@@ -22,7 +22,7 @@ func authed(m *mock.UserRepo, h http.Handler) http.Handler {
 }
 
 func newHandler(m *mock.UserRepo) http.Handler {
-	mux, api := httptestutil.NewHumaMux("tasks-api-users-test")
+	mux, api := humatest.NewTestMux("tasks-api-users-test")
 	users.RegisterRoutes(api, m, "")
 	return mux
 }

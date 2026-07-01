@@ -2,52 +2,58 @@ package middleware
 
 import (
 	"context"
-	"errors"
 	"net/http"
 
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/render"
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/logger"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/repo"
+	"github.com/js-beaulieu/hs-api/libs/hs-common/auth"
 )
 
-type ctxKey struct{}
+// userCtxKey is the app-local context key used to store *model.User. The shared
+// auth middleware stores a generic *auth.User under a different key, so this adapter
+// re-stores the task-domain model after the shared middleware runs.
+//
+//nolint:gochecknoglobals
+var userCtxKey = &struct{}{}
 
-var userCtxKey = ctxKey{}
+// userLoader adapts repo.UserRepo to the shared auth.UserLoader interface.
+type userLoader struct{ users repo.UserRepo }
+
+func (l userLoader) GetByID(ctx context.Context, id string) (*auth.User, error) {
+	u, err := l.users.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &auth.User{ID: u.ID, Name: u.Name, Email: u.Email}, nil
+}
+
+func (l userLoader) Create(ctx context.Context, id, name, email string) (*auth.User, error) {
+	u, err := l.users.Create(ctx, id, name, email)
+	if err != nil {
+		return nil, err
+	}
+	return &auth.User{ID: u.ID, Name: u.Name, Email: u.Email}, nil
+}
 
 // AuthMiddleware reads the X-User-ID header and looks up the user by ID.
 // If the user is not found, it auto-provisions them from X-User-Name and X-User-Email headers
 // (set by the gateway after JWT validation). Returns 401 only if X-User-ID is absent.
+//
+// It wraps the shared auth.Middleware, then re-stores the user as the app-local
+// *model.User so existing handlers and tests can keep using UserFromCtx.
 func AuthMiddleware(users repo.UserRepo) func(http.Handler) http.Handler {
+	shared := auth.Middleware(userLoader{users: users})
 	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			id := r.Header.Get("X-User-ID")
-			if id == "" {
-				render.Error(w, http.StatusUnauthorized, "unauthorized")
-				return
+		return shared(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if au := auth.UserFromCtx(r.Context()); au != nil {
+				r = r.WithContext(WithUser(r.Context(), &model.User{
+					ID:    au.ID,
+					Name:  au.Name,
+					Email: au.Email,
+				}))
 			}
-
-			u, err := users.GetByID(r.Context(), id)
-			if err != nil {
-				if !errors.Is(err, repo.ErrNotFound) {
-					render.Error(w, http.StatusInternalServerError, "internal error")
-					return
-				}
-				u, err = users.Create(r.Context(), id,
-					r.Header.Get("X-User-Name"),
-					r.Header.Get("X-User-Email"),
-				)
-				if err != nil {
-					render.Error(w, http.StatusInternalServerError, "internal error")
-					return
-				}
-			}
-
-			ctx := context.WithValue(r.Context(), userCtxKey, u)
-			log := logger.FromCtx(ctx).With("user_id", u.ID)
-			ctx = logger.IntoCtx(ctx, log)
-			next.ServeHTTP(w, r.WithContext(ctx))
-		})
+			next.ServeHTTP(w, r)
+		}))
 	}
 }
 

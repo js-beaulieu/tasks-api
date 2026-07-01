@@ -13,8 +13,8 @@ import (
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/projects"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/repo"
-	httptestutil "github.com/js-beaulieu/hs-api/api/tasks/internal/testing/http"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/testing/mock"
+	humatest "github.com/js-beaulieu/hs-api/libs/hs-common/huma"
 )
 
 // testUser is the authenticated user injected by AuthMiddleware in every request.
@@ -56,7 +56,7 @@ func defaultUserRepo() *mock.UserRepo {
 }
 
 func newHandler(projectsRepo *mock.ProjectRepo, tasksRepo *mock.TaskRepo) http.Handler {
-	mux, api := httptestutil.NewHumaMux("tasks-api-projects-test")
+	mux, api := humatest.NewTestMux("tasks-api-projects-test")
 	projects.RegisterRoutes(api, projectsRepo, tasksRepo, "")
 	return mux
 }

@@ -11,10 +11,10 @@ import (
 	"testing"
 
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/middleware"
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/logger"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
 	repoerr "github.com/js-beaulieu/hs-api/api/tasks/internal/repo"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/testing/mock"
+	"github.com/js-beaulieu/hs-api/libs/hs-common/logger"
 )
 
 func TestAuthMiddleware(t *testing.T) {

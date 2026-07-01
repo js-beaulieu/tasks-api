@@ -6,14 +6,14 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/config"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/middleware"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/projects"
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/render"
 	taghandler "github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/tags"
 	taskhandler "github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/tasks"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/users"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/store/postgres"
+	"github.com/js-beaulieu/hs-api/libs/hs-common/config"
+	"github.com/js-beaulieu/hs-api/libs/hs-common/render"
 )
 
 func New(store *postgres.Store, cfg config.Config) http.Handler {

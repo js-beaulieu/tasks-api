@@ -9,10 +9,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/config"
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/logger"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/mcpserver/tools"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/store/postgres"
+	"github.com/js-beaulieu/hs-api/libs/hs-common/config"
+	"github.com/js-beaulieu/hs-api/libs/hs-common/logger"
 )
 
 func New(store *postgres.Store, cfg config.Config) *mcp.Server {

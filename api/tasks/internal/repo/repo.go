@@ -2,14 +2,16 @@ package repo
 
 import (
 	"context"
-	"errors"
 
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
+	repoerr "github.com/js-beaulieu/hs-api/libs/hs-common/repo"
 )
 
-var ErrNotFound = errors.New("not found")
-var ErrNoAccess = errors.New("no access")
-var ErrConflict = errors.New("conflict")
+var (
+	ErrNotFound = repoerr.ErrNotFound
+	ErrNoAccess = repoerr.ErrNoAccess
+	ErrConflict = repoerr.ErrConflict
+)
 
 type UserRepo interface {
 	GetByID(ctx context.Context, id string) (*model.User, error)

@@ -1,3 +1,5 @@
+// Package config provides lightweight environment-based configuration loading
+// for Home Stack API services.
 package config
 
 import (
@@ -6,6 +8,7 @@ import (
 	"strconv"
 )
 
+// Config holds common runtime settings for an API service.
 type Config struct {
 	Port               string
 	PGConnectionString string
@@ -15,6 +18,7 @@ type Config struct {
 	LogDetailed        bool
 }
 
+// Load reads configuration from environment variables with sensible defaults.
 func Load() Config {
 	cfg := Config{
 		Port:               "8080",

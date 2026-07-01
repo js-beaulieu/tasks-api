@@ -9,9 +9,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/logger"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/repo"
+	"github.com/js-beaulieu/hs-api/libs/hs-common/logger"
 )
 
 type taskStore struct{ db *sql.DB }

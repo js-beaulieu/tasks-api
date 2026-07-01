@@ -8,11 +8,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/config"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/store/postgres"
 	testdb "github.com/js-beaulieu/hs-api/api/tasks/internal/testing/db"
+	"github.com/js-beaulieu/hs-api/libs/hs-common/config"
 )
 
 type Env struct {

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/testing/http"
+	httptestutil "github.com/js-beaulieu/hs-api/api/tasks/internal/testing/http"
 )
 
 func TestHealthIntegration(t *testing.T) {

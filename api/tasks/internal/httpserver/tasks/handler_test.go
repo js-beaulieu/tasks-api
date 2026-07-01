@@ -13,8 +13,8 @@ import (
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/tasks"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/repo"
-	httptestutil "github.com/js-beaulieu/hs-api/api/tasks/internal/testing/http"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/testing/mock"
+	humatest "github.com/js-beaulieu/hs-api/libs/hs-common/huma"
 )
 
 var testUser = &model.User{ID: "user-1", Name: "Alice", Email: "alice@example.com"}
@@ -79,7 +79,7 @@ func projectRepoWithRole(role string) *mock.ProjectRepo {
 }
 
 func newHandler(projectsRepo *mock.ProjectRepo, tasksRepo *mock.TaskRepo, tagsRepo *mock.TagRepo) http.Handler {
-	mux, api := httptestutil.NewHumaMux("tasks-api-tasks-test")
+	mux, api := humatest.NewTestMux("tasks-api-tasks-test")
 	tasks.RegisterRoutes(api, projectsRepo, tasksRepo, tagsRepo, "")
 	return mux
 }

@@ -7,12 +7,12 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/config"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver"
 	httpmdw "github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/middleware"
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/logger"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/mcpserver"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/store/postgres"
+	"github.com/js-beaulieu/hs-api/libs/hs-common/config"
+	"github.com/js-beaulieu/hs-api/libs/hs-common/logger"
 )
 
 func main() {
