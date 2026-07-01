@@ -135,7 +135,13 @@ type projectInput struct {
 func (h *Handler) get(ctx context.Context, input *projectInput) (*projectOutput, error) {
 	p, role, err := h.loadProject(ctx, input.ProjectID)
 	if err != nil {
-		return nil, repoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	p.EffectiveRole = role
 	return &projectOutput{Body: p}, nil
@@ -156,7 +162,13 @@ type updateProjectInput struct {
 func (h *Handler) update(ctx context.Context, input *updateProjectInput) (*projectOutput, error) {
 	p, role, err := h.loadProject(ctx, input.ProjectID)
 	if err != nil {
-		return nil, repoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	if !access.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
@@ -183,7 +195,13 @@ func (h *Handler) update(ctx context.Context, input *updateProjectInput) (*proje
 func (h *Handler) delete(ctx context.Context, input *projectInput) (*struct{}, error) {
 	p, role, err := h.loadProject(ctx, input.ProjectID)
 	if err != nil {
-		return nil, repoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	if !access.RequireRole(model.RoleAdmin, role) {
 		return nil, huma.Error403Forbidden("forbidden")
@@ -201,7 +219,13 @@ type memberListOutput struct {
 func (h *Handler) listMembers(ctx context.Context, input *projectInput) (*memberListOutput, error) {
 	p, _, err := h.loadProject(ctx, input.ProjectID)
 	if err != nil {
-		return nil, repoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	members, err := h.projects.ListMembers(ctx, p.ID)
 	if err != nil {
@@ -231,7 +255,13 @@ type createdMemberOutput struct {
 func (h *Handler) addMember(ctx context.Context, input *addMemberInput) (*createdMemberOutput, error) {
 	p, role, err := h.loadProject(ctx, input.ProjectID)
 	if err != nil {
-		return nil, repoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	if !access.RequireRole(model.RoleAdmin, role) {
 		return nil, huma.Error403Forbidden("forbidden")
@@ -270,7 +300,13 @@ type memberOutput struct {
 func (h *Handler) updateMember(ctx context.Context, input *updateMemberInput) (*memberOutput, error) {
 	p, role, err := h.loadProject(ctx, input.ProjectID)
 	if err != nil {
-		return nil, repoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	if !access.RequireRole(model.RoleAdmin, role) {
 		return nil, huma.Error403Forbidden("forbidden")
@@ -301,7 +337,13 @@ type removeMemberOutput struct {
 func (h *Handler) removeMember(ctx context.Context, input *removeMemberInput) (*removeMemberOutput, error) {
 	p, role, err := h.loadProject(ctx, input.ProjectID)
 	if err != nil {
-		return nil, repoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	if !access.RequireRole(model.RoleAdmin, role) {
 		return nil, huma.Error403Forbidden("forbidden")
@@ -325,7 +367,13 @@ type statusListOutput struct {
 func (h *Handler) listStatuses(ctx context.Context, input *projectInput) (*statusListOutput, error) {
 	p, _, err := h.loadProject(ctx, input.ProjectID)
 	if err != nil {
-		return nil, repoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	statuses, err := h.projects.ListStatuses(ctx, p.ID)
 	if err != nil {
@@ -354,7 +402,13 @@ type statusOutput struct {
 func (h *Handler) addStatus(ctx context.Context, input *addStatusInput) (*statusOutput, error) {
 	p, role, err := h.loadProject(ctx, input.ProjectID)
 	if err != nil {
-		return nil, repoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	if !access.RequireRole(model.RoleAdmin, role) {
 		return nil, huma.Error403Forbidden("forbidden")
@@ -379,7 +433,13 @@ type deleteStatusInput struct {
 func (h *Handler) deleteStatus(ctx context.Context, input *deleteStatusInput) (*struct{}, error) {
 	p, role, err := h.loadProject(ctx, input.ProjectID)
 	if err != nil {
-		return nil, repoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	if !access.RequireRole(model.RoleAdmin, role) {
 		return nil, huma.Error403Forbidden("forbidden")
@@ -411,7 +471,13 @@ type taskListOutput struct {
 func (h *Handler) listTasks(ctx context.Context, input *listTasksInput) (*taskListOutput, error) {
 	p, _, err := h.loadProject(ctx, input.ProjectID)
 	if err != nil {
-		return nil, repoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	list, err := h.tasks.ListChildren(ctx, p.ID, nil, repo.TaskFilter{
 		Status:     stringPtr(input.Status),
@@ -456,7 +522,13 @@ type createdTaskOutput struct {
 func (h *Handler) createTask(ctx context.Context, input *createTaskInput) (*createdTaskOutput, error) {
 	p, role, err := h.loadProject(ctx, input.ProjectID)
 	if err != nil {
-		return nil, repoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	if !access.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
@@ -487,13 +559,4 @@ func (h *Handler) createTask(ctx context.Context, input *createTaskInput) (*crea
 		return nil, huma.Error500InternalServerError("internal error")
 	}
 	return &createdTaskOutput{Status: http.StatusCreated, Body: t}, nil
-}
-func repoError(err error) error {
-	if errors.Is(err, repoerr.ErrNotFound) {
-		return huma.Error404NotFound("not found")
-	}
-	if errors.Is(err, repoerr.ErrNoAccess) {
-		return huma.Error403Forbidden("forbidden")
-	}
-	return huma.Error500InternalServerError("internal error")
 }

@@ -62,7 +62,13 @@ type taskOutput struct {
 func (h *Handler) get(ctx context.Context, input *taskInput) (*taskOutput, error) {
 	t, _, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, repoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	return &taskOutput{Body: t}, nil
 }
@@ -121,7 +127,13 @@ type updateTaskOutput struct {
 func (h *Handler) update(ctx context.Context, input *updateTaskInput) (*updateTaskOutput, error) {
 	t, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, repoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	if !access.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
@@ -189,13 +201,25 @@ func (h *Handler) update(ctx context.Context, input *updateTaskInput) (*updateTa
 func (h *Handler) delete(ctx context.Context, input *taskInput) (*struct{}, error) {
 	t, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, repoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	if !access.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
 	}
 	if err := h.tasks.Delete(ctx, t.ID); err != nil {
-		return nil, repoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	return nil, nil
 }
@@ -207,7 +231,13 @@ type subtaskListOutput struct {
 func (h *Handler) listSubtasks(ctx context.Context, input *taskInput) (*subtaskListOutput, error) {
 	t, _, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, repoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	parentID := t.ID
 	list, err := h.tasks.ListChildren(ctx, t.ProjectID, &parentID, repo.TaskFilter{})
@@ -242,7 +272,13 @@ type createdTaskOutput struct {
 func (h *Handler) createSubtask(ctx context.Context, input *createSubtaskInput) (*createdTaskOutput, error) {
 	parent, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, repoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	if !access.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
@@ -284,7 +320,13 @@ type tagListOutput struct {
 func (h *Handler) listTags(ctx context.Context, input *taskInput) (*tagListOutput, error) {
 	t, _, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, repoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	list, err := h.tags.ListForTask(ctx, t.ID)
 	if err != nil {
@@ -313,7 +355,13 @@ type tagOutput struct {
 func (h *Handler) addTag(ctx context.Context, input *addTagInput) (*tagOutput, error) {
 	t, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, repoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	if !access.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
@@ -335,7 +383,13 @@ type deleteTagInput struct {
 func (h *Handler) deleteTag(ctx context.Context, input *deleteTagInput) (*struct{}, error) {
 	t, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, repoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	if !access.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
@@ -344,13 +398,4 @@ func (h *Handler) deleteTag(ctx context.Context, input *deleteTagInput) (*struct
 		return nil, huma.Error500InternalServerError("internal error")
 	}
 	return nil, nil
-}
-func repoError(err error) error {
-	if errors.Is(err, repoerr.ErrNotFound) {
-		return huma.Error404NotFound("not found")
-	}
-	if errors.Is(err, repoerr.ErrNoAccess) {
-		return huma.Error403Forbidden("forbidden")
-	}
-	return huma.Error500InternalServerError("internal error")
 }
