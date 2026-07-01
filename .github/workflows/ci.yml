@@ -10,55 +10,99 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      any-go: ${{ steps.detect.outputs.any-go }}
+      shared: ${{ steps.detect.outputs.shared }}
+      libs: ${{ steps.detect.outputs.libs }}
+      apps: ${{ steps.detect.outputs.apps }}
+      docker: ${{ steps.detect.outputs.docker }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed paths
+        id: detect
+        run: |
+          changed=$(git diff --name-only origin/main...HEAD)
+          echo "Changed files:"
+          echo "$changed"
+
+          any_go=false
+          shared=false
+          libs=false
+          apps=false
+          docker=false
+
+          for f in $changed; do
+            case "$f" in
+              *.go|go.mod|go.sum|go.work|go.work.sum)
+                any_go=true
+                ;;
+            esac
+            case "$f" in
+              libs/*|go.work|go.work.sum|Taskfile.yml|.golangci.yml|.github/*)
+                shared=true
+                ;;
+            esac
+            case "$f" in
+              libs/*)
+                libs=true
+                ;;
+            esac
+            case "$f" in
+              api/*)
+                apps=true
+                ;;
+            esac
+            case "$f" in
+              api/tasks/Dockerfile|.dockerignore)
+                docker=true
+                ;;
+            esac
+          done
+
+          echo "any-go=$any_go" >> "$GITHUB_OUTPUT"
+          echo "shared=$shared" >> "$GITHUB_OUTPUT"
+          echo "libs=$libs" >> "$GITHUB_OUTPUT"
+          echo "apps=$apps" >> "$GITHUB_OUTPUT"
+          echo "docker=$docker" >> "$GITHUB_OUTPUT"
+
   ci:
-    if: github.event.pull_request.draft == false
+    needs: changes
+    if: github.event.pull_request.draft == false && needs.changes.outputs.any-go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Detect changed paths
-        id: filter
-        uses: dorny/paths-filter@v4
-        with:
-          filters: |
-            code:
-              - '**/*.go'
-              - 'api/tasks/go.mod'
-              - 'api/tasks/go.sum'
-              - 'Taskfile.yml'
-              - 'api/tasks/Dockerfile'
-              - '.dockerignore'
-              - '.github/**'
-
       - uses: actions/setup-go@v5
-        if: steps.filter.outputs.code == 'true'
         with:
           go-version-file: api/tasks/go.mod
           cache: false
 
       - uses: actions/cache@v4
-        if: steps.filter.outputs.code == 'true'
         with:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ hashFiles('api/tasks/go.sum') }}
+          key: go-${{ runner.os }}-${{ hashFiles('**/go.sum', 'go.work.sum') }}
           restore-keys: go-${{ runner.os }}-
 
       - name: Install Task
-        if: steps.filter.outputs.code == 'true'
         uses: go-task/setup-task@v2
         with:
           version: "3.x"
 
       - name: Lint
-        if: steps.filter.outputs.code == 'true'
         run: task lint
 
       - name: Build
-        if: steps.filter.outputs.code == 'true'
         run: task build
 
       - name: Tests with coverage
-        if: steps.filter.outputs.code == 'true'
+        # Run the full test suite when any Go code, shared tooling, or workspace file changes,
+        # because library changes must exercise downstream apps.
+        if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.libs == 'true' || needs.changes.outputs.apps == 'true'
         run: task test:coverage:integration

@@ -73,9 +73,9 @@ func Middleware(opts Options) func(http.Handler) http.Handler {
 				} else {
 					log.DebugContext(ctx, "→ request")
 				}
-			if opts.Detailed {
-				respBuf = &bytes.Buffer{}
-			}
+				if opts.Detailed {
+					respBuf = &bytes.Buffer{}
+				}
 			}
 			rw := &loggingResponseWriter{ResponseWriter: w, status: http.StatusOK, body: respBuf}
 			start := time.Now()
@@ -90,8 +90,8 @@ func Middleware(opts Options) func(http.Handler) http.Handler {
 				} else if rw.status >= 400 {
 					level = slog.LevelWarn
 				}
-			if opts.Detailed {
-				log.Log(ctx, level, "← response",
+				if opts.Detailed {
+					log.Log(ctx, level, "← response",
 						"status", rw.status,
 						"duration_ms", time.Since(start).Milliseconds(),
 						"bytes", rw.written,
