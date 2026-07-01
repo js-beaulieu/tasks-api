@@ -1,5 +1,5 @@
-// Package logmw provides a reusable HTTP request-logging middleware for Home Stack API services.
-package logmw
+// Package logmiddleware provides a reusable HTTP request-logging middleware for Home Stack API services.
+package logmiddleware
 
 import (
 	"bytes"
