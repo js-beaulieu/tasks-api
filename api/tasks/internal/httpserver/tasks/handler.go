@@ -13,8 +13,8 @@ import (
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/access"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/middleware"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
+	"github.com/js-beaulieu/hs-api/api/tasks/internal/recurrence"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/repo"
-	"github.com/js-beaulieu/hs-api/libs/hs-common/humautil"
 	repoerr "github.com/js-beaulieu/hs-api/libs/hs-common/repo"
 )
 
@@ -62,7 +62,7 @@ type taskOutput struct {
 func (h *Handler) get(ctx context.Context, input *taskInput) (*taskOutput, error) {
 	t, _, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, humautil.RepoError(err)
+		return nil, repoError(err)
 	}
 	return &taskOutput{Body: t}, nil
 }
@@ -121,7 +121,7 @@ type updateTaskOutput struct {
 func (h *Handler) update(ctx context.Context, input *updateTaskInput) (*updateTaskOutput, error) {
 	t, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, humautil.RepoError(err)
+		return nil, repoError(err)
 	}
 	if !access.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
@@ -163,7 +163,7 @@ func (h *Handler) update(ctx context.Context, input *updateTaskInput) (*updateTa
 		t.ParentID = input.Body.ParentID.Value
 	}
 	if input.Body.Recurrence.Set {
-		if err := humautil.ValidateRecurrence(input.Body.Recurrence.Value, t.DueDate); err != nil {
+		if err := recurrence.Validate(input.Body.Recurrence.Value, t.DueDate); err != nil {
 			return nil, err
 		}
 		t.Recurrence = input.Body.Recurrence.Value
@@ -189,13 +189,13 @@ func (h *Handler) update(ctx context.Context, input *updateTaskInput) (*updateTa
 func (h *Handler) delete(ctx context.Context, input *taskInput) (*struct{}, error) {
 	t, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, humautil.RepoError(err)
+		return nil, repoError(err)
 	}
 	if !access.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
 	}
 	if err := h.tasks.Delete(ctx, t.ID); err != nil {
-		return nil, humautil.RepoError(err)
+		return nil, repoError(err)
 	}
 	return nil, nil
 }
@@ -207,7 +207,7 @@ type subtaskListOutput struct {
 func (h *Handler) listSubtasks(ctx context.Context, input *taskInput) (*subtaskListOutput, error) {
 	t, _, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, humautil.RepoError(err)
+		return nil, repoError(err)
 	}
 	parentID := t.ID
 	list, err := h.tasks.ListChildren(ctx, t.ProjectID, &parentID, repo.TaskFilter{})
@@ -242,7 +242,7 @@ type createdTaskOutput struct {
 func (h *Handler) createSubtask(ctx context.Context, input *createSubtaskInput) (*createdTaskOutput, error) {
 	parent, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, humautil.RepoError(err)
+		return nil, repoError(err)
 	}
 	if !access.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
@@ -250,7 +250,7 @@ func (h *Handler) createSubtask(ctx context.Context, input *createSubtaskInput) 
 	if strings.TrimSpace(input.Body.Name) == "" {
 		return nil, huma.Error422UnprocessableEntity("name is required")
 	}
-	if err := humautil.ValidateRecurrence(input.Body.Recurrence, input.Body.DueDate); err != nil {
+	if err := recurrence.Validate(input.Body.Recurrence, input.Body.DueDate); err != nil {
 		return nil, err
 	}
 	user := middleware.UserFromCtx(ctx)
@@ -284,7 +284,7 @@ type tagListOutput struct {
 func (h *Handler) listTags(ctx context.Context, input *taskInput) (*tagListOutput, error) {
 	t, _, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, humautil.RepoError(err)
+		return nil, repoError(err)
 	}
 	list, err := h.tags.ListForTask(ctx, t.ID)
 	if err != nil {
@@ -313,7 +313,7 @@ type tagOutput struct {
 func (h *Handler) addTag(ctx context.Context, input *addTagInput) (*tagOutput, error) {
 	t, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, humautil.RepoError(err)
+		return nil, repoError(err)
 	}
 	if !access.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
@@ -335,7 +335,7 @@ type deleteTagInput struct {
 func (h *Handler) deleteTag(ctx context.Context, input *deleteTagInput) (*struct{}, error) {
 	t, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, humautil.RepoError(err)
+		return nil, repoError(err)
 	}
 	if !access.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
@@ -344,4 +344,13 @@ func (h *Handler) deleteTag(ctx context.Context, input *deleteTagInput) (*struct
 		return nil, huma.Error500InternalServerError("internal error")
 	}
 	return nil, nil
+}
+func repoError(err error) error {
+	if errors.Is(err, repoerr.ErrNotFound) {
+		return huma.Error404NotFound("not found")
+	}
+	if errors.Is(err, repoerr.ErrNoAccess) {
+		return huma.Error403Forbidden("forbidden")
+	}
+	return huma.Error500InternalServerError("internal error")
 }
