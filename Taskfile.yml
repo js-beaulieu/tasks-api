@@ -204,3 +204,39 @@ tasks:
     cmds:
       - go tool gotestsum -- ./...
       - go tool gotestsum --watch -- ./...
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Bazelisk bootstrap (via tools/go.mod; no global Bazelisk required)
+  # ────────────────────────────────────────────────────────────────────────────
+
+  bazel:
+    desc: Run Bazelisk through the pinned tools module (passes args to bazel)
+    vars:
+      ARGS: '{{.CLI_ARGS}}'
+      BAZEL_VERSION:
+        sh: cat .bazelversion | tr -d '\n'
+    env:
+      USE_BAZEL_VERSION: '{{.BAZEL_VERSION}}'
+    cmds:
+      - go tool -C tools bazelisk {{.ARGS}}
+
+  bazel:build:
+    desc: Bazel build (placeholder; runs through bazelisk)
+    cmds:
+      - task: bazel
+        vars:
+          CLI_ARGS: build //...
+
+  bazel:test:
+    desc: Bazel test (placeholder; runs through bazelisk)
+    cmds:
+      - task: bazel
+        vars:
+          CLI_ARGS: test //...
+
+  bazel:query:
+    desc: Run a Bazel query through the pinned tools module
+    cmds:
+      - task: bazel
+        vars:
+          CLI_ARGS: 'query {{.CLI_ARGS}}'
