@@ -1,0 +1,33 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "users",
+    srcs = ["handler.go"],
+    importpath = "github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/users",
+    visibility = ["//api/tasks:__subpackages__"],
+    deps = [
+        "//api/tasks/internal/httpserver/middleware",
+        "//api/tasks/internal/model",
+        "//api/tasks/internal/repo",
+        "//libs/hs-common/repo",
+        "@com_github_danielgtaylor_huma_v2//:huma",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":users",
+    visibility = ["//api/tasks:__subpackages__"],
+)
+
+go_test(
+    name = "users_test",
+    srcs = ["handler_test.go"],
+    deps = [
+        ":users",
+        "//api/tasks/internal/httpserver/middleware",
+        "//api/tasks/internal/model",
+        "//api/tasks/internal/testing/mock",
+        "//libs/hs-common/huma",
+    ],
+)

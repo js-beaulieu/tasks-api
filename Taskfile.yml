@@ -206,7 +206,8 @@ tasks:
       - go tool gotestsum --watch -- ./...
 
   # ────────────────────────────────────────────────────────────────────────────
-  # Bazelisk bootstrap (via tools/go.mod; no global Bazelisk required)
+  # Bazel integration (via tools/go.mod; no global Bazelisk required)
+  # Generic targets operate on all packages under api/* and libs/*.
   # ────────────────────────────────────────────────────────────────────────────
 
   bazel:
@@ -221,18 +222,25 @@ tasks:
       - go tool -C tools bazelisk {{.ARGS}}
 
   bazel:build:
-    desc: Bazel build (placeholder; runs through bazelisk)
+    desc: Bazel build all repo targets
     cmds:
       - task: bazel
         vars:
           CLI_ARGS: build //...
 
   bazel:test:
-    desc: Bazel test (placeholder; runs through bazelisk)
+    desc: Bazel test all repo targets
     cmds:
       - task: bazel
         vars:
           CLI_ARGS: test //...
+
+  bazel:gazelle:
+    desc: Run Gazelle to update Bazel build files for api/* and libs/*
+    cmds:
+      - task: bazel
+        vars:
+          CLI_ARGS: run //:gazelle -- -r api libs
 
   bazel:query:
     desc: Run a Bazel query through the pinned tools module
@@ -240,3 +248,11 @@ tasks:
       - task: bazel
         vars:
           CLI_ARGS: 'query {{.CLI_ARGS}}'
+
+  bazel:clean:
+    desc: Clean Bazel output and disk cache
+    cmds:
+      - task: bazel
+        vars:
+          CLI_ARGS: clean
+      - rm -rf ~/.cache/bazel-disk-cache

@@ -1,0 +1,24 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "logmiddleware",
+    srcs = ["logmiddleware.go"],
+    importpath = "github.com/js-beaulieu/hs-api/libs/hs-common/logmiddleware",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//libs/hs-common/logger",
+        "@com_github_google_uuid//:uuid",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":logmiddleware",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "logmiddleware_test",
+    srcs = ["logmiddleware_test.go"],
+    embed = [":logmiddleware"],
+)

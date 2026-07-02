@@ -1,0 +1,25 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "postgres",
+    srcs = ["postgres.go"],
+    importpath = "github.com/js-beaulieu/hs-api/libs/hs-common/postgres",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_github_jackc_pgx_v5//pgconn",
+        "@com_github_jackc_pgx_v5//stdlib",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":postgres",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "postgres_test",
+    srcs = ["postgres_test.go"],
+    embed = [":postgres"],
+    deps = ["@com_github_jackc_pgx_v5//pgconn"],
+)

@@ -1,0 +1,46 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "postgres",
+    srcs = [
+        "db.go",
+        "locks.go",
+        "projects.go",
+        "recurrence.go",
+        "store.go",
+        "tags.go",
+        "tasks.go",
+        "users.go",
+    ],
+    embedsrcs = [
+        "migrations/00001_initial.sql",
+        "migrations/00002_recurring_tasks.sql",
+        "migrations/00003_user_search_trgm.sql",
+        "migrations/00004_task_indexes.sql",
+    ],
+    importpath = "github.com/js-beaulieu/hs-api/api/tasks/internal/store/postgres",
+    visibility = ["//api/tasks:__subpackages__"],
+    deps = [
+        "//api/tasks/internal/model",
+        "//api/tasks/internal/repo",
+        "//libs/hs-common/logger",
+        "//libs/hs-common/postgres",
+        "//libs/hs-common/repo",
+        "@com_github_google_uuid//:uuid",
+        "@com_github_lib_pq//:pq",
+        "@com_github_pressly_goose_v3//:goose",
+        "@com_github_teambition_rrule_go//:rrule-go",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":postgres",
+    visibility = ["//api/tasks:__subpackages__"],
+)
+
+go_test(
+    name = "postgres_test",
+    srcs = ["recurrence_test.go"],
+    embed = [":postgres"],
+)

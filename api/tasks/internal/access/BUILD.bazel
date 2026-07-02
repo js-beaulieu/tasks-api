@@ -1,0 +1,18 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "access",
+    srcs = ["access.go"],
+    importpath = "github.com/js-beaulieu/hs-api/api/tasks/internal/access",
+    visibility = ["//api/tasks:__subpackages__"],
+    deps = [
+        "//api/tasks/internal/model",
+        "//libs/hs-common/role",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":access",
+    visibility = ["//api/tasks:__subpackages__"],
+)

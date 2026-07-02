@@ -1,0 +1,14 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "pkgs_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/js-beaulieu/hs-api/api/tasks/scripts/pkgs",
+    visibility = ["//visibility:private"],
+)
+
+go_binary(
+    name = "pkgs",
+    embed = [":pkgs_lib"],
+    visibility = ["//visibility:public"],
+)

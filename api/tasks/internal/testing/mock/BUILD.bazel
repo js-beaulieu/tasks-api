@@ -1,0 +1,23 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "mock",
+    srcs = [
+        "project_repo.go",
+        "tag_repo.go",
+        "task_repo.go",
+        "user_repo.go",
+    ],
+    importpath = "github.com/js-beaulieu/hs-api/api/tasks/internal/testing/mock",
+    visibility = ["//api/tasks:__subpackages__"],
+    deps = [
+        "//api/tasks/internal/model",
+        "//api/tasks/internal/repo",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":mock",
+    visibility = ["//api/tasks:__subpackages__"],
+)

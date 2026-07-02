@@ -1,0 +1,26 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "auth",
+    srcs = ["auth.go"],
+    importpath = "github.com/js-beaulieu/hs-api/libs/hs-common/auth",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//libs/hs-common/logger",
+        "//libs/hs-common/render",
+        "//libs/hs-common/repo",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":auth",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "auth_test",
+    srcs = ["auth_test.go"],
+    embed = [":auth"],
+    deps = ["//libs/hs-common/repo"],
+)

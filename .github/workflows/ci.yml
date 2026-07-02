@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       any-go: ${{ steps.detect.outputs.any-go }}
+      any-bazel: ${{ steps.detect.outputs.any-bazel }}
       shared: ${{ steps.detect.outputs.shared }}
       libs: ${{ steps.detect.outputs.libs }}
       apps: ${{ steps.detect.outputs.apps }}
@@ -31,6 +32,7 @@ jobs:
           echo "$changed"
 
           any_go=false
+          any_bazel=false
           shared=false
           libs=false
           apps=false
@@ -43,7 +45,7 @@ jobs:
                 ;;
             esac
             case "$f" in
-              libs/*|go.work|go.work.sum|Taskfile.yml|.golangci.yml|.github/*)
+              libs/*|go.work|go.work.sum|go.mod|go.sum|Taskfile.yml|.golangci.yml|.github/*|.bazelrc|MODULE.bazel|MODULE.bazel.lock|WORKSPACE.bazel|BUILD.bazel|*/BUILD.bazel)
                 shared=true
                 ;;
             esac
@@ -58,6 +60,11 @@ jobs:
                 ;;
             esac
             case "$f" in
+              *.go|*.mod|*.sum|*.work|*.bazel|*.bazelrc|MODULE.bazel|MODULE.bazel.lock|WORKSPACE.bazel)
+                any_bazel=true
+                ;;
+            esac
+            case "$f" in
               api/tasks/Dockerfile|.dockerignore)
                 docker=true
                 ;;
@@ -65,6 +72,7 @@ jobs:
           done
 
           echo "any-go=$any_go" >> "$GITHUB_OUTPUT"
+          echo "any-bazel=$any_bazel" >> "$GITHUB_OUTPUT"
           echo "shared=$shared" >> "$GITHUB_OUTPUT"
           echo "libs=$libs" >> "$GITHUB_OUTPUT"
           echo "apps=$apps" >> "$GITHUB_OUTPUT"
@@ -83,11 +91,13 @@ jobs:
           cache: false
 
       - uses: actions/cache@v4
+        name: Cache Go modules and build cache
         with:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ hashFiles('**/go.sum', 'go.work.sum') }}
+            ~/.cache/bazel-disk-cache
+          key: go-${{ runner.os }}-${{ hashFiles('**/go.sum', 'go.work.sum', 'MODULE.bazel.lock') }}
           restore-keys: go-${{ runner.os }}-
 
       - name: Install Task
@@ -106,3 +116,12 @@ jobs:
         # because library changes must exercise downstream apps.
         if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.libs == 'true' || needs.changes.outputs.apps == 'true'
         run: task test:coverage:integration
+
+      - name: Bazel build
+        # Run Bazel build/test only when Bazel-relevant files change.
+        if: needs.changes.outputs.any-bazel == 'true' || needs.changes.outputs.any-go == 'true'
+        run: task bazel:build
+
+      - name: Bazel test
+        if: needs.changes.outputs.any-bazel == 'true' || needs.changes.outputs.any-go == 'true'
+        run: task bazel:test

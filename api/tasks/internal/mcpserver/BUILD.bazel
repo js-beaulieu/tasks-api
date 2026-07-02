@@ -1,0 +1,34 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "mcpserver",
+    srcs = ["server.go"],
+    importpath = "github.com/js-beaulieu/hs-api/api/tasks/internal/mcpserver",
+    visibility = ["//api/tasks:__subpackages__"],
+    deps = [
+        "//api/tasks/internal/config",
+        "//api/tasks/internal/mcpserver/tools",
+        "//api/tasks/internal/store/postgres",
+        "//libs/hs-common/logger",
+        "@com_github_google_uuid//:uuid",
+        "@com_github_modelcontextprotocol_go_sdk//mcp",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":mcpserver",
+    visibility = ["//api/tasks:__subpackages__"],
+)
+
+go_test(
+    name = "mcpserver_test",
+    srcs = ["server_test.go"],
+    embed = [":mcpserver"],
+    deps = [
+        "//api/tasks/internal/config",
+        "//api/tasks/internal/store/postgres",
+        "//api/tasks/internal/testing/mock",
+        "@com_github_modelcontextprotocol_go_sdk//mcp",
+    ],
+)

@@ -1,0 +1,9 @@
+load("@gazelle//:def.bzl", "gazelle")
+
+# Root prefix for repository-local imports. Gazelle uses this to map
+# import paths like github.com/js-beaulieu/hs-api/libs/hs-common to
+# local labels under //libs/hs-common and //api/tasks.
+# gazelle:prefix github.com/js-beaulieu/hs-api
+# gazelle:go_naming_convention import_alias
+
+gazelle(name = "gazelle")

@@ -1,0 +1,25 @@
+"""Root Bazel module for the hs-api Go workspace.
+
+This module provides Bazel targets for every Go module under api/* and libs/*.
+It does not replace the existing Go/Taskfile workflow; it supplements it with
+incremental, cacheable builds for CI and large refactors.
+"""
+
+module(
+    name = "hs_api",
+    version = "0.0.0",
+)
+
+bazel_dep(name = "rules_go", version = "0.61.1")
+bazel_dep(name = "gazelle", version = "0.51.3")
+
+go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
+go_sdk.download(version = "1.26.2")
+
+# go_deps loads external Go modules from the root go.mod, which aggregates
+# direct dependencies across api/* and libs/* via workspace replace directives.
+go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
+go_deps.from_file(go_mod = "//:go.mod")
+use_repo(go_deps, "cat_dario_mergo", "com_github_azure_go_ansiterm", "com_github_cenkalti_backoff_v4", "com_github_cespare_xxhash_v2", "com_github_containerd_errdefs", "com_github_containerd_errdefs_pkg", "com_github_containerd_log", "com_github_containerd_platforms", "com_github_cpuguy83_dockercfg", "com_github_danielgtaylor_huma_v2", "com_github_davecgh_go_spew", "com_github_distribution_reference", "com_github_docker_go_connections", "com_github_docker_go_units", "com_github_ebitengine_purego", "com_github_felixge_httpsnoop", "com_github_go_logr_logr", "com_github_go_logr_stdr", "com_github_go_ole_go_ole", "com_github_google_go_cmp", "com_github_google_jsonschema_go", "com_github_google_uuid", "com_github_jackc_pgpassfile", "com_github_jackc_pgservicefile", "com_github_jackc_pgx_v5", "com_github_jackc_puddle_v2", "com_github_joho_godotenv", "com_github_js_beaulieu_hs_api_api_tasks", "com_github_js_beaulieu_hs_api_libs_hs_common", "com_github_klauspost_compress", "com_github_lib_pq", "com_github_lmittmann_tint", "com_github_lufia_plan9stats", "com_github_magiconair_properties", "com_github_mfridman_interpolate", "com_github_mfridman_xflag", "com_github_microsoft_go_winio", "com_github_moby_docker_image_spec", "com_github_moby_go_archive", "com_github_moby_moby_api", "com_github_moby_moby_client", "com_github_moby_patternmatcher", "com_github_moby_sys_sequential", "com_github_moby_sys_user", "com_github_moby_sys_userns", "com_github_moby_term", "com_github_modelcontextprotocol_go_sdk", "com_github_ncruces_go_strftime", "com_github_opencontainers_go_digest", "com_github_opencontainers_image_spec", "com_github_pmezard_go_difflib", "com_github_power_devops_perfstat", "com_github_pressly_goose_v3", "com_github_segmentio_asm", "com_github_segmentio_encoding", "com_github_sethvargo_go_retry", "com_github_shirou_gopsutil_v4", "com_github_sirupsen_logrus", "com_github_stretchr_objx", "com_github_stretchr_testify", "com_github_teambition_rrule_go", "com_github_testcontainers_testcontainers_go", "com_github_testcontainers_testcontainers_go_modules_postgres", "com_github_tklauser_go_sysconf", "com_github_tklauser_numcpus", "com_github_yosida95_uritemplate_v3", "com_github_yusufpapurcu_wmi", "in_gopkg_yaml_v3", "io_opentelemetry_go_auto_sdk", "io_opentelemetry_go_contrib_instrumentation_net_http_otelhttp", "io_opentelemetry_go_otel", "io_opentelemetry_go_otel_metric", "io_opentelemetry_go_otel_trace", "org_golang_x_crypto", "org_golang_x_oauth2", "org_golang_x_sync", "org_golang_x_sys", "org_golang_x_text", "org_golang_x_tools", "org_uber_go_multierr", "org_uber_go_zap")
+
+# use_repo entries are maintained automatically by `bazel mod tidy`.
