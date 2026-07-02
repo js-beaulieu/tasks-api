@@ -1,0 +1,18 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "db",
+    srcs = ["db.go"],
+    importpath = "github.com/js-beaulieu/hs-api/api/tasks/internal/testing/db",
+    visibility = ["//api/tasks:__subpackages__"],
+    deps = [
+        "//api/tasks/internal/store/postgres",
+        "//libs/hs-common/testdb",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":db",
+    visibility = ["//api/tasks:__subpackages__"],
+)

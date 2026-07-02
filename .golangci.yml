@@ -19,4 +19,4 @@ formatters:
     - goimports
   settings:
     goimports:
-      local-prefixes: github.com/js-beaulieu/tasks
+      local-prefixes: github.com/js-beaulieu/hs-api

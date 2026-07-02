@@ -1,0 +1,37 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "httpserver",
+    srcs = ["server.go"],
+    importpath = "github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver",
+    visibility = ["//api/tasks:__subpackages__"],
+    deps = [
+        "//api/tasks/internal/config",
+        "//api/tasks/internal/httpserver/middleware",
+        "//api/tasks/internal/httpserver/projects",
+        "//api/tasks/internal/httpserver/tags",
+        "//api/tasks/internal/httpserver/tasks",
+        "//api/tasks/internal/httpserver/users",
+        "//api/tasks/internal/store/postgres",
+        "//libs/hs-common/render",
+        "@com_github_danielgtaylor_huma_v2//:huma",
+        "@com_github_danielgtaylor_huma_v2//adapters/humago",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":httpserver",
+    visibility = ["//api/tasks:__subpackages__"],
+)
+
+go_test(
+    name = "httpserver_test",
+    srcs = ["server_test.go"],
+    embed = [":httpserver"],
+    deps = [
+        "//api/tasks/internal/config",
+        "//api/tasks/internal/store/postgres",
+        "//api/tasks/internal/testing/mock",
+    ],
+)

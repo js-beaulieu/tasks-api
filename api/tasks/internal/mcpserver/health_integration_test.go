@@ -5,8 +5,9 @@ package mcpserver_test
 import (
 	"testing"
 
-	mcptest "github.com/js-beaulieu/hs-api/api/tasks/internal/testing/mcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	mcptest "github.com/js-beaulieu/hs-api/api/tasks/internal/testing/mcp"
 )
 
 func TestMCPHealthIntegration(t *testing.T) {

@@ -1,0 +1,24 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "huma",
+    srcs = ["huma.go"],
+    importpath = "github.com/js-beaulieu/hs-api/libs/hs-common/huma",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_github_danielgtaylor_huma_v2//:huma",
+        "@com_github_danielgtaylor_huma_v2//adapters/humago",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":huma",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "huma_test",
+    srcs = ["huma_test.go"],
+    embed = [":huma"],
+)

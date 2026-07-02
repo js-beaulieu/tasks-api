@@ -1,3 +1,4 @@
+// Package config holds the concrete, app-local environment configuration for the tasks API.
 package config
 
 import (
@@ -6,6 +7,7 @@ import (
 	"strconv"
 )
 
+// Config holds runtime settings for the tasks API.
 type Config struct {
 	Port               string
 	PGConnectionString string
@@ -15,6 +17,7 @@ type Config struct {
 	LogDetailed        bool
 }
 
+// Load reads configuration from environment variables with sensible defaults.
 func Load() Config {
 	cfg := Config{
 		Port:               "8080",

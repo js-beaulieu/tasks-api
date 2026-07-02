@@ -1,0 +1,23 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "mcp",
+    srcs = ["integration.go"],
+    importpath = "github.com/js-beaulieu/hs-api/api/tasks/internal/testing/mcp",
+    visibility = ["//api/tasks:__subpackages__"],
+    deps = [
+        "//api/tasks/internal/config",
+        "//api/tasks/internal/httpserver/middleware",
+        "//api/tasks/internal/mcpserver",
+        "//api/tasks/internal/model",
+        "//api/tasks/internal/store/postgres",
+        "//api/tasks/internal/testing/db",
+        "@com_github_modelcontextprotocol_go_sdk//mcp",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":mcp",
+    visibility = ["//api/tasks:__subpackages__"],
+)

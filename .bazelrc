@@ -1,0 +1,24 @@
+# Generic Bazel configuration for the hs-api monorepo.
+# Designed to be free-plan-friendly and incremental for future api/* and libs/* modules.
+
+# Performance & caching
+build --disk_cache=~/.cache/bazel-disk-cache
+fetch --disk_cache=~/.cache/bazel-disk-cache
+query --disk_cache=~/.cache/bazel-disk-cache
+
+# Reproducibility / saner defaults
+build --incompatible_strict_action_env
+build --nolegacy_external_runfiles
+
+# Go defaults: avoid statically linking cgo (default rules_go static config pulls
+# in libc warnings for gazelle) while keeping incremental output outside VCS.
+build --@rules_go//go/config:static=false
+
+test --test_output=errors
+
+# CI-friendly: concise progress
+common --color=yes
+
+# Repository-local Bzlmod resolution for multiple Go modules under api/* and libs/*.
+# Use the root MODULE.bazel as the authoritative module. Bzlmod is the default in
+# Bazel 8, so no explicit flag is required.

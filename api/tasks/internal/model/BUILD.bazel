@@ -1,0 +1,14 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "model",
+    srcs = ["model.go"],
+    importpath = "github.com/js-beaulieu/hs-api/api/tasks/internal/model",
+    visibility = ["//api/tasks:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":model",
+    visibility = ["//api/tasks:__subpackages__"],
+)

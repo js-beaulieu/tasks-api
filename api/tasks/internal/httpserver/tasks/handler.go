@@ -10,10 +10,12 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/humautil"
+	"github.com/js-beaulieu/hs-api/api/tasks/internal/access"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/middleware"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
+	"github.com/js-beaulieu/hs-api/api/tasks/internal/recurrence"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/repo"
+	repoerr "github.com/js-beaulieu/hs-api/libs/hs-common/repo"
 )
 
 type Handler struct {
@@ -44,7 +46,7 @@ func (h *Handler) loadTask(ctx context.Context, taskID string) (*model.Task, str
 	user := middleware.UserFromCtx(ctx)
 	role, err := h.projects.GetMemberRole(ctx, t.ProjectID, user.ID)
 	if err != nil {
-		return nil, "", repo.ErrNoAccess
+		return nil, "", repoerr.ErrNoAccess
 	}
 	return t, role, nil
 }
@@ -60,7 +62,13 @@ type taskOutput struct {
 func (h *Handler) get(ctx context.Context, input *taskInput) (*taskOutput, error) {
 	t, _, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, humautil.RepoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	return &taskOutput{Body: t}, nil
 }
@@ -119,15 +127,21 @@ type updateTaskOutput struct {
 func (h *Handler) update(ctx context.Context, input *updateTaskInput) (*updateTaskOutput, error) {
 	t, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, humautil.RepoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
-	if !humautil.RequireRole(model.RoleModify, role) {
+	if !access.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
 	}
 	if input.Body.ProjectID != nil && *input.Body.ProjectID != t.ProjectID {
 		user := middleware.UserFromCtx(ctx)
 		targetRole, err := h.projects.GetMemberRole(ctx, *input.Body.ProjectID, user.ID)
-		if err != nil || !humautil.RequireRole(model.RoleModify, targetRole) {
+		if err != nil || !access.RequireRole(model.RoleModify, targetRole) {
 			return nil, huma.Error403Forbidden("forbidden")
 		}
 		t.ProjectID = *input.Body.ProjectID
@@ -161,7 +175,7 @@ func (h *Handler) update(ctx context.Context, input *updateTaskInput) (*updateTa
 		t.ParentID = input.Body.ParentID.Value
 	}
 	if input.Body.Recurrence.Set {
-		if err := humautil.ValidateRecurrence(input.Body.Recurrence.Value, t.DueDate); err != nil {
+		if err := recurrence.Validate(input.Body.Recurrence.Value, t.DueDate); err != nil {
 			return nil, err
 		}
 		t.Recurrence = input.Body.Recurrence.Value
@@ -172,7 +186,7 @@ func (h *Handler) update(ctx context.Context, input *updateTaskInput) (*updateTa
 	}
 	updated, nextID, err := h.tasks.Update(ctx, t)
 	if err != nil {
-		if errors.Is(err, repo.ErrConflict) {
+		if errors.Is(err, repoerr.ErrConflict) {
 			return nil, huma.Error409Conflict("invalid status or missing due_date for recurring task")
 		}
 		return nil, huma.Error500InternalServerError("internal error")
@@ -187,13 +201,25 @@ func (h *Handler) update(ctx context.Context, input *updateTaskInput) (*updateTa
 func (h *Handler) delete(ctx context.Context, input *taskInput) (*struct{}, error) {
 	t, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, humautil.RepoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
-	if !humautil.RequireRole(model.RoleModify, role) {
+	if !access.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
 	}
 	if err := h.tasks.Delete(ctx, t.ID); err != nil {
-		return nil, humautil.RepoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	return nil, nil
 }
@@ -205,7 +231,13 @@ type subtaskListOutput struct {
 func (h *Handler) listSubtasks(ctx context.Context, input *taskInput) (*subtaskListOutput, error) {
 	t, _, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, humautil.RepoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	parentID := t.ID
 	list, err := h.tasks.ListChildren(ctx, t.ProjectID, &parentID, repo.TaskFilter{})
@@ -240,15 +272,21 @@ type createdTaskOutput struct {
 func (h *Handler) createSubtask(ctx context.Context, input *createSubtaskInput) (*createdTaskOutput, error) {
 	parent, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, humautil.RepoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
-	if !humautil.RequireRole(model.RoleModify, role) {
+	if !access.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
 	}
 	if strings.TrimSpace(input.Body.Name) == "" {
 		return nil, huma.Error422UnprocessableEntity("name is required")
 	}
-	if err := humautil.ValidateRecurrence(input.Body.Recurrence, input.Body.DueDate); err != nil {
+	if err := recurrence.Validate(input.Body.Recurrence, input.Body.DueDate); err != nil {
 		return nil, err
 	}
 	user := middleware.UserFromCtx(ctx)
@@ -282,7 +320,13 @@ type tagListOutput struct {
 func (h *Handler) listTags(ctx context.Context, input *taskInput) (*tagListOutput, error) {
 	t, _, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, humautil.RepoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
 	list, err := h.tags.ListForTask(ctx, t.ID)
 	if err != nil {
@@ -311,9 +355,15 @@ type tagOutput struct {
 func (h *Handler) addTag(ctx context.Context, input *addTagInput) (*tagOutput, error) {
 	t, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, humautil.RepoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
-	if !humautil.RequireRole(model.RoleModify, role) {
+	if !access.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
 	}
 	if strings.TrimSpace(input.Body.Tag) == "" {
@@ -333,9 +383,15 @@ type deleteTagInput struct {
 func (h *Handler) deleteTag(ctx context.Context, input *deleteTagInput) (*struct{}, error) {
 	t, role, err := h.loadTask(ctx, input.TaskID)
 	if err != nil {
-		return nil, humautil.RepoError(err)
+		if errors.Is(err, repoerr.ErrNotFound) {
+			return nil, huma.Error404NotFound("not found")
+		}
+		if errors.Is(err, repoerr.ErrNoAccess) {
+			return nil, huma.Error403Forbidden("forbidden")
+		}
+		return nil, huma.Error500InternalServerError("internal error")
 	}
-	if !humautil.RequireRole(model.RoleModify, role) {
+	if !access.RequireRole(model.RoleModify, role) {
 		return nil, huma.Error403Forbidden("forbidden")
 	}
 	if err := h.tags.Delete(ctx, t.ID, input.Tag); err != nil {

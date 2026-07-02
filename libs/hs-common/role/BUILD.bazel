@@ -1,0 +1,20 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "role",
+    srcs = ["role.go"],
+    importpath = "github.com/js-beaulieu/hs-api/libs/hs-common/role",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":role",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "role_test",
+    srcs = ["role_test.go"],
+    embed = [":role"],
+)

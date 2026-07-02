@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/logger"
+	"github.com/js-beaulieu/hs-api/libs/hs-common/logger"
 )
 
 type tagStore struct{ db *sql.DB }

@@ -30,3 +30,7 @@ docs/superpowers/
 
 # Temporary files
 tmp/
+
+# Bazel output symlinks and cache (local only)
+/bazel-*
+/.bazelrc.user

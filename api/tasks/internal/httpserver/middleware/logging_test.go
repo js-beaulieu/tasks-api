@@ -9,7 +9,7 @@ import (
 
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/config"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/middleware"
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/logger"
+	"github.com/js-beaulieu/hs-api/libs/hs-common/logger"
 )
 
 func TestLogging_EchosProvidedRequestID(t *testing.T) {

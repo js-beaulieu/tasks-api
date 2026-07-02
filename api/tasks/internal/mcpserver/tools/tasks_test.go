@@ -11,6 +11,7 @@ import (
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/repo"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/testing/mock"
+	repoerr "github.com/js-beaulieu/hs-api/libs/hs-common/repo"
 )
 
 func strPtr(s string) *string { return &s }
@@ -247,7 +248,7 @@ func TestGetTaskHandler(t *testing.T) {
 	t.Run("not found returns error", func(t *testing.T) {
 		tr := &mock.TaskRepo{
 			GetFn: func(_ context.Context, _ string) (*model.Task, error) {
-				return nil, repo.ErrNotFound
+				return nil, repoerr.ErrNotFound
 			},
 		}
 		handler := GetTaskHandler(tr)
@@ -471,7 +472,7 @@ func TestUpdateTaskAccessControl(t *testing.T) {
 				if projectID == "p1" {
 					return model.RoleModify, nil
 				}
-				return "", repo.ErrNoAccess
+				return "", repoerr.ErrNoAccess
 			},
 		}
 		targetProject := "p2"
@@ -526,7 +527,7 @@ func TestDeleteTaskHandler(t *testing.T) {
 		}
 		pr := &mock.ProjectRepo{
 			GetMemberRoleFn: func(_ context.Context, _, _ string) (string, error) {
-				return "", repo.ErrNoAccess
+				return "", repoerr.ErrNoAccess
 			},
 		}
 		handler := DeleteTaskHandler(pr, tr)
@@ -571,7 +572,7 @@ func TestDeleteTaskHandler(t *testing.T) {
 			GetFn: func(_ context.Context, _ string) (*model.Task, error) {
 				return &model.Task{ID: "t1", ProjectID: "p1", Name: "T", Status: "todo", OwnerID: "u1"}, nil
 			},
-			DeleteFn: func(_ context.Context, _ string) error { return repo.ErrNotFound },
+			DeleteFn: func(_ context.Context, _ string) error { return repoerr.ErrNotFound },
 		}
 		pr := &mock.ProjectRepo{
 			GetMemberRoleFn: func(_ context.Context, _, _ string) (string, error) {
@@ -583,8 +584,8 @@ func TestDeleteTaskHandler(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error for ErrNotFound from Delete")
 		}
-		if !errors.Is(err, repo.ErrNotFound) {
-			t.Errorf("err = %v, want repo.ErrNotFound", err)
+		if !errors.Is(err, repoerr.ErrNotFound) {
+			t.Errorf("err = %v, want repoerr.ErrNotFound", err)
 		}
 	})
 

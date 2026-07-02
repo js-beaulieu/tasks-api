@@ -10,16 +10,19 @@ import (
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/config"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver"
 	httpmdw "github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/middleware"
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/logger"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/mcpserver"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/store/postgres"
+	"github.com/js-beaulieu/hs-api/libs/hs-common/logger"
 )
 
 func main() {
 	_ = godotenv.Load()
 
 	cfg := config.Load()
-	logger.New(cfg)
+	logger.New(logger.Options{
+		Format: cfg.LogFormat,
+		Level:  cfg.LogLevel,
+	})
 	slog.Info("starting server", "port", cfg.Port)
 
 	db, err := postgres.Open(cfg.PGConnectionString)

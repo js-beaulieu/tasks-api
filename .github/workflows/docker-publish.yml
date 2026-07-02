@@ -3,6 +3,15 @@ name: Docker Publish
 on:
   push:
     branches: [main]
+    paths:
+      - 'api/**'
+      - 'libs/**'
+      - 'go.work'
+      - 'go.work.sum'
+      - 'Taskfile.yml'
+      - '.github/workflows/docker-publish.yml'
+      - '**/Dockerfile'
+      - '.dockerignore'
 
 jobs:
   docker-publish:

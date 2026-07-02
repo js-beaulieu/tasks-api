@@ -1,0 +1,21 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "http",
+    srcs = ["integration.go"],
+    importpath = "github.com/js-beaulieu/hs-api/api/tasks/internal/testing/http",
+    visibility = ["//api/tasks:__subpackages__"],
+    deps = [
+        "//api/tasks/internal/config",
+        "//api/tasks/internal/httpserver",
+        "//api/tasks/internal/model",
+        "//api/tasks/internal/store/postgres",
+        "//api/tasks/internal/testing/db",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":http",
+    visibility = ["//api/tasks:__subpackages__"],
+)

@@ -13,8 +13,9 @@ import (
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/projects"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/repo"
-	httptestutil "github.com/js-beaulieu/hs-api/api/tasks/internal/testing/http"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/testing/mock"
+	humatest "github.com/js-beaulieu/hs-api/libs/hs-common/huma"
+	repoerr "github.com/js-beaulieu/hs-api/libs/hs-common/repo"
 )
 
 // testUser is the authenticated user injected by AuthMiddleware in every request.
@@ -56,7 +57,7 @@ func defaultUserRepo() *mock.UserRepo {
 }
 
 func newHandler(projectsRepo *mock.ProjectRepo, tasksRepo *mock.TaskRepo) http.Handler {
-	mux, api := httptestutil.NewHumaMux("tasks-api-projects-test")
+	mux, api := humatest.NewTestMux("tasks-api-projects-test")
 	projects.RegisterRoutes(api, projectsRepo, tasksRepo, "")
 	return mux
 }
@@ -172,7 +173,7 @@ func TestProjectCtx(t *testing.T) {
 	t.Run("GET /projects/{id} not found returns 404", func(t *testing.T) {
 		pr := &mock.ProjectRepo{
 			GetFn: func(_ context.Context, _ string) (*model.Project, error) {
-				return nil, repo.ErrNotFound
+				return nil, repoerr.ErrNotFound
 			},
 		}
 		handler := newHandler(pr, &mock.TaskRepo{})
@@ -190,7 +191,7 @@ func TestProjectCtx(t *testing.T) {
 				return testProject, nil
 			},
 			GetMemberRoleFn: func(_ context.Context, _, _ string) (string, error) {
-				return "", repo.ErrNoAccess
+				return "", repoerr.ErrNoAccess
 			},
 		}
 		handler := newHandler(pr, &mock.TaskRepo{})
@@ -278,7 +279,7 @@ func TestStatuses(t *testing.T) {
 	t.Run("DELETE /projects/{id}/statuses/{status} conflict returns 409", func(t *testing.T) {
 		pr := projectRepoWithAccess(model.RoleAdmin)
 		pr.DeleteStatusFn = func(_ context.Context, _, _ string) error {
-			return repo.ErrConflict
+			return repoerr.ErrConflict
 		}
 		handler := newHandler(pr, &mock.TaskRepo{})
 		req := newRequest(http.MethodDelete, "/proj-1/statuses/todo", nil)
@@ -616,7 +617,7 @@ func TestAddStatus(t *testing.T) {
 
 	t.Run("POST /{id}/statuses duplicate returns 409", func(t *testing.T) {
 		pr := projectRepoWithAccess(model.RoleAdmin)
-		pr.AddStatusFn = func(_ context.Context, _, _ string) error { return repo.ErrConflict }
+		pr.AddStatusFn = func(_ context.Context, _, _ string) error { return repoerr.ErrConflict }
 		w := serve(newHandler(pr, &mock.TaskRepo{}), defaultUserRepo(), newRequest(http.MethodPost, "/proj-1/statuses", map[string]any{"status": "todo"}))
 		if w.Code != http.StatusConflict {
 			t.Fatalf("status = %d, want 409", w.Code)

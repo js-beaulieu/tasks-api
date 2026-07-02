@@ -1,0 +1,20 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "render",
+    srcs = ["render.go"],
+    importpath = "github.com/js-beaulieu/hs-api/libs/hs-common/render",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":render",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "render_test",
+    srcs = ["render_test.go"],
+    embed = [":render"],
+)

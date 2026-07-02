@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/humautil"
+	"github.com/js-beaulieu/hs-api/api/tasks/internal/access"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/middleware"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/repo"
@@ -111,7 +111,7 @@ func CreateTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo) mcp.T
 		}
 		userID := middleware.UserFromCtx(ctx).ID
 		role, err := projectsRepo.GetMemberRole(ctx, in.ProjectID, userID)
-		if err != nil || !humautil.RequireRole(model.RoleModify, role) {
+		if err != nil || !access.RequireRole(model.RoleModify, role) {
 			return nil, nil, errors.New("no access")
 		}
 		status := in.Status
@@ -173,12 +173,12 @@ func UpdateTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo, tagsR
 			return nil, nil, err
 		}
 		role, err := projectsRepo.GetMemberRole(ctx, t.ProjectID, userID)
-		if err != nil || !humautil.RequireRole(model.RoleModify, role) {
+		if err != nil || !access.RequireRole(model.RoleModify, role) {
 			return nil, nil, errors.New("no access")
 		}
 		if in.ProjectID != nil && *in.ProjectID != t.ProjectID {
 			targetRole, err := projectsRepo.GetMemberRole(ctx, *in.ProjectID, userID)
-			if err != nil || !humautil.RequireRole(model.RoleModify, targetRole) {
+			if err != nil || !access.RequireRole(model.RoleModify, targetRole) {
 				return nil, nil, errors.New("no access to target project")
 			}
 		}
@@ -250,7 +250,7 @@ func DeleteTaskHandler(projectsRepo repo.ProjectRepo, tasks repo.TaskRepo) mcp.T
 		if err != nil {
 			return nil, nil, err
 		}
-		if !humautil.RequireRole(model.RoleModify, role) {
+		if !access.RequireRole(model.RoleModify, role) {
 			return nil, nil, errors.New("modify role required to delete a task")
 		}
 		if err := tasks.Delete(ctx, in.TaskID); err != nil {

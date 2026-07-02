@@ -1,15 +1,38 @@
 version: '3'
 
+vars:
+  APPS_DIR: api
+  LIBS_DIR: libs
+  # The canonical module that pins our Go tools (golangci-lint, gotestsum, lefthook, air).
+  TOOLS_MODULE: api/tasks
+
+  # Discover all Go modules under api/* and libs/* as space-separated relative paths.
+  APP_MODULES:
+    sh: find {{.APPS_DIR}} -maxdepth 2 -name go.mod -printf '%h ' | xargs
+  LIB_MODULES:
+    sh: find {{.LIBS_DIR}} -maxdepth 2 -name go.mod -printf '%h ' | xargs
+
+  # Absolute path to the tools module so lib lint can invoke `go tool -C <tools>`.
+  TOOLS_MODULE_ABS:
+    sh: realpath {{.TOOLS_MODULE}}
+
+env:
+  # Ensure tools in the main app module are found by `go tool` when running from the repo root.
+  GOTOOLCHAIN: local
+
 tasks:
   build:
     desc: Build all workspace packages
-    dir: api/tasks
     cmds:
-      - go build ./...
+      - for:
+          var: APP_MODULES
+        cmd: cd {{.ITEM}} && go build ./...
+      - for:
+          var: LIB_MODULES
+        cmd: cd {{.ITEM}} && go build ./...
 
   check:
     desc: format + lint + build + test (pre-commit sanity check)
-    dir: api/tasks
     deps:
       - format
       - lint
@@ -58,25 +81,38 @@ tasks:
 
   format:
     desc: Format all Go source files
-    dir: api/tasks
     cmds:
       - gofmt -w .
+      - go tool -C {{.TOOLS_MODULE}} golangci-lint fmt
 
   lint:
-    desc: Run golangci-lint (pinned in go.mod, no install needed)
-    dir: api/tasks
+    desc: Run golangci-lint (pinned in api/tasks/go.mod, no install needed)
     cmds:
-      - go tool golangci-lint run
+      - task: lint:libs
+      - task: lint:apps
+
+  lint:apps:
+    desc: Lint app modules
+    cmds:
+      - for:
+          var: APP_MODULES
+        cmd: cd {{.ITEM}} && go tool -C {{.TOOLS_MODULE_ABS}} golangci-lint run
+
+  lint:libs:
+    desc: Lint library modules
+    cmds:
+      - for:
+          var: LIB_MODULES
+        cmd: cd {{.ITEM}} && go tool -C {{.TOOLS_MODULE_ABS}} golangci-lint run
 
   test:
     desc: Run all tests (unit + integration)
-    dir: api/tasks
     cmds:
-      - go tool gotestsum --junitfile report.xml -- -tags integration ./...
+      - task: test:libs
+      - task: test:apps
 
   test:coverage:
     desc: Run full test suite (unit + integration) with coverage profile
-    dir: api/tasks
     cmds:
       - task: test:coverage:integration
 
@@ -121,9 +157,26 @@ tasks:
 
   test:integration:
     desc: Run integration tests only (spins up Postgres with Testcontainers)
+    cmds:
+      - task: test:apps:integration
+
+  test:apps:
+    desc: Run all app module tests
+    cmds:
+      - task: test:apps:integration
+
+  test:apps:integration:
+    desc: Run app integration tests
     dir: api/tasks
     cmds:
       - go tool gotestsum --junitfile report.xml -- -tags integration ./...
+
+  test:libs:
+    desc: Run library module tests
+    cmds:
+      - for:
+          var: LIB_MODULES
+        cmd: cd {{.ITEM}} && go test ./...
 
   test:unit:
     desc: Run unit tests only (no DB)
@@ -151,3 +204,55 @@ tasks:
     cmds:
       - go tool gotestsum -- ./...
       - go tool gotestsum --watch -- ./...
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Bazel integration (via tools/go.mod; no global Bazelisk required)
+  # Generic targets operate on all packages under api/* and libs/*.
+  # ────────────────────────────────────────────────────────────────────────────
+
+  bazel:
+    desc: Run Bazelisk through the pinned tools module (passes args to bazel)
+    vars:
+      ARGS: '{{.CLI_ARGS}}'
+      BAZEL_VERSION:
+        sh: cat .bazelversion | tr -d '\n'
+    env:
+      USE_BAZEL_VERSION: '{{.BAZEL_VERSION}}'
+    cmds:
+      - go tool -C tools bazelisk {{.ARGS}}
+
+  bazel:build:
+    desc: Bazel build all repo targets
+    cmds:
+      - task: bazel
+        vars:
+          CLI_ARGS: build //...
+
+  bazel:test:
+    desc: Bazel test all repo targets
+    cmds:
+      - task: bazel
+        vars:
+          CLI_ARGS: test //...
+
+  bazel:gazelle:
+    desc: Run Gazelle to update Bazel build files for api/* and libs/*
+    cmds:
+      - task: bazel
+        vars:
+          CLI_ARGS: run //:gazelle -- -r api libs
+
+  bazel:query:
+    desc: Run a Bazel query through the pinned tools module
+    cmds:
+      - task: bazel
+        vars:
+          CLI_ARGS: 'query {{.CLI_ARGS}}'
+
+  bazel:clean:
+    desc: Clean Bazel output and disk cache
+    cmds:
+      - task: bazel
+        vars:
+          CLI_ARGS: clean
+      - rm -rf ~/.cache/bazel-disk-cache

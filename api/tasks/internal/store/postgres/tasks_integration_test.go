@@ -12,6 +12,7 @@ import (
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/store/postgres"
 	testdb "github.com/js-beaulieu/hs-api/api/tasks/internal/testing/db"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/testing/seed"
+	repoerr "github.com/js-beaulieu/hs-api/libs/hs-common/repo"
 )
 
 // ---- Create / Get ----
@@ -56,8 +57,8 @@ func TestTasks_CreateGet(t *testing.T) {
 func TestTasks_Get_NotFound(t *testing.T) {
 	_, store := testdb.Open(t)
 	_, err := store.Tasks.Get(context.Background(), "no-such-id")
-	if err != repo.ErrNotFound {
-		t.Errorf("err = %v, want repo.ErrNotFound", err)
+	if err != repoerr.ErrNotFound {
+		t.Errorf("err = %v, want repoerr.ErrNotFound", err)
 	}
 }
 
@@ -90,8 +91,8 @@ func TestTasks_Create_InvalidStatus(t *testing.T) {
 		Status:    "no_such_status",
 	}
 	err := store.Tasks.Create(ctx, task)
-	if err != repo.ErrConflict {
-		t.Errorf("err = %v, want repo.ErrConflict for invalid status", err)
+	if err != repoerr.ErrConflict {
+		t.Errorf("err = %v, want repoerr.ErrConflict for invalid status", err)
 	}
 }
 
@@ -236,8 +237,8 @@ func TestTasks_Update_InvalidStatus(t *testing.T) {
 
 	task.Status = "bogus"
 	_, _, err := store.Tasks.Update(ctx, task)
-	if err != repo.ErrConflict {
-		t.Errorf("err = %v, want repo.ErrConflict for invalid status", err)
+	if err != repoerr.ErrConflict {
+		t.Errorf("err = %v, want repoerr.ErrConflict for invalid status", err)
 	}
 }
 
@@ -331,12 +332,12 @@ func TestTasks_Delete(t *testing.T) {
 	}
 
 	_, err := store.Tasks.Get(ctx, parent.ID)
-	if err != repo.ErrNotFound {
-		t.Errorf("parent: err = %v, want repo.ErrNotFound", err)
+	if err != repoerr.ErrNotFound {
+		t.Errorf("parent: err = %v, want repoerr.ErrNotFound", err)
 	}
 	_, err = store.Tasks.Get(ctx, child.ID)
-	if err != repo.ErrNotFound {
-		t.Errorf("child (cascade): err = %v, want repo.ErrNotFound", err)
+	if err != repoerr.ErrNotFound {
+		t.Errorf("child (cascade): err = %v, want repoerr.ErrNotFound", err)
 	}
 }
 
@@ -363,8 +364,8 @@ func TestTasks_Delete_CompactsPositions(t *testing.T) {
 func TestTasks_Delete_NotFound(t *testing.T) {
 	_, store := testdb.Open(t)
 	err := store.Tasks.Delete(context.Background(), "no-such-id")
-	if err != repo.ErrNotFound {
-		t.Errorf("err = %v, want repo.ErrNotFound", err)
+	if err != repoerr.ErrNotFound {
+		t.Errorf("err = %v, want repoerr.ErrNotFound", err)
 	}
 }
 
@@ -689,8 +690,8 @@ func TestTasks_Update_RecurringToDone_NoDueDate_ReturnsConflict(t *testing.T) {
 
 	task.Status = "done"
 	_, _, err := store.Tasks.Update(ctx, task)
-	if err != repo.ErrConflict {
-		t.Errorf("err = %v, want repo.ErrConflict (recurring task requires due_date)", err)
+	if err != repoerr.ErrConflict {
+		t.Errorf("err = %v, want repoerr.ErrConflict (recurring task requires due_date)", err)
 	}
 
 	got, err := store.Tasks.Get(ctx, task.ID)
@@ -737,8 +738,8 @@ func TestTasks_CycleGuard(t *testing.T) {
 		orig := taskA.ParentID
 		taskA.ParentID = &taskA.ID
 		_, _, err := store.Tasks.Update(ctx, taskA)
-		if err != repo.ErrConflict {
-			t.Errorf("self-ref: err = %v, want repo.ErrConflict", err)
+		if err != repoerr.ErrConflict {
+			t.Errorf("self-ref: err = %v, want repoerr.ErrConflict", err)
 		}
 		taskA.ParentID = orig
 	})
@@ -747,8 +748,8 @@ func TestTasks_CycleGuard(t *testing.T) {
 		orig := taskA.ParentID
 		taskA.ParentID = &taskB.ID
 		_, _, err := store.Tasks.Update(ctx, taskA)
-		if err != repo.ErrConflict {
-			t.Errorf("descendant-ref: err = %v, want repo.ErrConflict", err)
+		if err != repoerr.ErrConflict {
+			t.Errorf("descendant-ref: err = %v, want repoerr.ErrConflict", err)
 		}
 		taskA.ParentID = orig
 	})

@@ -6,9 +6,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/repo"
 	testdb "github.com/js-beaulieu/hs-api/api/tasks/internal/testing/db"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/testing/seed"
+	repoerr "github.com/js-beaulieu/hs-api/libs/hs-common/repo"
 )
 
 func TestUsers_Create(t *testing.T) {
@@ -40,8 +40,8 @@ func TestUsers_Create(t *testing.T) {
 			t.Fatalf("first Create: %v", err)
 		}
 		_, err = store.Users.Create(ctx, "user-2", "Bobby", "bobby@example.com")
-		if err != repo.ErrConflict {
-			t.Errorf("duplicate Create: err = %v, want repo.ErrConflict", err)
+		if err != repoerr.ErrConflict {
+			t.Errorf("duplicate Create: err = %v, want repoerr.ErrConflict", err)
 		}
 	})
 }
@@ -66,8 +66,8 @@ func TestUsers_GetByID(t *testing.T) {
 
 	t.Run("missing ID returns ErrNotFound", func(t *testing.T) {
 		_, err := store.Users.GetByID(ctx, "does-not-exist")
-		if err != repo.ErrNotFound {
-			t.Errorf("err = %v, want repo.ErrNotFound", err)
+		if err != repoerr.ErrNotFound {
+			t.Errorf("err = %v, want repoerr.ErrNotFound", err)
 		}
 	})
 }
@@ -98,8 +98,8 @@ func TestUsers_Update(t *testing.T) {
 	t.Run("unknown ID returns ErrNotFound", func(t *testing.T) {
 		u := seed.User(t, store, seed.UserInput{ID: "u2", Name: "Bob", Email: "bob@example.com"})
 		u.ID = "does-not-exist"
-		if err := store.Users.Update(ctx, u); err != repo.ErrNotFound {
-			t.Errorf("err = %v, want repo.ErrNotFound", err)
+		if err := store.Users.Update(ctx, u); err != repoerr.ErrNotFound {
+			t.Errorf("err = %v, want repoerr.ErrNotFound", err)
 		}
 	})
 
@@ -107,8 +107,8 @@ func TestUsers_Update(t *testing.T) {
 		seed.User(t, store, seed.UserInput{ID: "u3", Name: "Carol", Email: "carol@example.com"})
 		u := seed.User(t, store, seed.UserInput{ID: "u4", Name: "Dave", Email: "dave@example.com"})
 		u.Email = "carol@example.com"
-		if err := store.Users.Update(ctx, u); err != repo.ErrConflict {
-			t.Errorf("err = %v, want repo.ErrConflict", err)
+		if err := store.Users.Update(ctx, u); err != repoerr.ErrConflict {
+			t.Errorf("err = %v, want repoerr.ErrConflict", err)
 		}
 	})
 }
@@ -122,14 +122,14 @@ func TestUsers_Delete(t *testing.T) {
 		if err := store.Users.Delete(ctx, "u1"); err != nil {
 			t.Fatalf("Delete: %v", err)
 		}
-		if _, err := store.Users.GetByID(ctx, "u1"); err != repo.ErrNotFound {
+		if _, err := store.Users.GetByID(ctx, "u1"); err != repoerr.ErrNotFound {
 			t.Errorf("after delete: err = %v, want ErrNotFound", err)
 		}
 	})
 
 	t.Run("unknown ID returns ErrNotFound", func(t *testing.T) {
-		if err := store.Users.Delete(ctx, "does-not-exist"); err != repo.ErrNotFound {
-			t.Errorf("err = %v, want repo.ErrNotFound", err)
+		if err := store.Users.Delete(ctx, "does-not-exist"); err != repoerr.ErrNotFound {
+			t.Errorf("err = %v, want repoerr.ErrNotFound", err)
 		}
 	})
 }

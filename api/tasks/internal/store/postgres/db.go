@@ -3,70 +3,45 @@ package postgres
 import (
 	"database/sql"
 	"embed"
-	"errors"
-	"fmt"
-	"strings"
 
-	"github.com/jackc/pgx/v5/pgconn"
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
+
+	commonpg "github.com/js-beaulieu/hs-api/libs/hs-common/postgres"
 )
 
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-// Open opens a Postgres database at the given DSN and runs all pending goose
-// migrations before returning.
+// Open opens a Postgres database at the given DSN using the shared pgx helper
+// and runs all pending goose migrations before returning.
 //
 // DSN example:
 //
 //	"postgres://postgres:postgres@localhost:5432/tasks_api?sslmode=disable"
 func Open(dsn string) (*sql.DB, error) {
-	db, err := sql.Open("pgx", dsn)
+	db, err := commonpg.Open(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("open postgres: %w", err)
-	}
-	if err := db.Ping(); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("ping postgres: %w", err)
+		return nil, err
 	}
 
 	goose.SetBaseFS(migrationsFS)
 	if err := goose.SetDialect("postgres"); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("goose set dialect: %w", err)
+		return nil, err
 	}
 	if err := goose.Up(db, "migrations"); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("goose up: %w", err)
+		return nil, err
 	}
 
 	return db, nil
 }
 
-func bind(query string) string {
-	var b strings.Builder
-	b.Grow(len(query) + 8)
+// bind converts "?" placeholders to PostgreSQL positional placeholders.
+func bind(query string) string { return commonpg.Bind(query) }
 
-	index := 1
-	for _, r := range query {
-		if r == '?' {
-			fmt.Fprintf(&b, "$%d", index)
-			index++
-			continue
-		}
-		b.WriteRune(r)
-	}
+// isUniqueConstraint reports whether err is a Postgres unique-violation (23505).
+func isUniqueConstraint(err error) bool { return commonpg.IsUniqueConstraint(err) }
 
-	return b.String()
-}
-
-func isUniqueConstraint(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505"
-}
-
-func isForeignKeyConstraint(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23503"
-}
+// isForeignKeyConstraint reports whether err is a Postgres FK violation (23503).
+func isForeignKeyConstraint(err error) bool { return commonpg.IsForeignKeyConstraint(err) }

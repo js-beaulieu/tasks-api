@@ -1,0 +1,14 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "mincov_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/js-beaulieu/hs-api/api/tasks/scripts/mincov",
+    visibility = ["//visibility:private"],
+)
+
+go_binary(
+    name = "mincov",
+    embed = [":mincov_lib"],
+    visibility = ["//visibility:public"],
+)

@@ -9,9 +9,10 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/js-beaulieu/hs-api/api/tasks/internal/logger"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/repo"
+	"github.com/js-beaulieu/hs-api/libs/hs-common/logger"
+	repoerr "github.com/js-beaulieu/hs-api/libs/hs-common/repo"
 )
 
 type taskStore struct{ db *sql.DB }
@@ -69,7 +70,7 @@ func (s *taskStore) ListChildren(ctx context.Context, projectID string, parentID
 	return tasks, rows.Err()
 }
 
-// Get fetches a single task by ID. Returns repo.ErrNotFound if absent.
+// Get fetches a single task by ID. Returns repoerr.ErrNotFound if absent.
 func (s *taskStore) Get(ctx context.Context, id string) (*model.Task, error) {
 	logger.FromCtx(ctx).Debug("getting task", "id", id)
 	rows, err := s.db.QueryContext(ctx,
@@ -86,7 +87,7 @@ func (s *taskStore) Get(ctx context.Context, id string) (*model.Task, error) {
 			return nil, fmt.Errorf("get task: %w", err)
 		}
 		logger.FromCtx(ctx).Debug("task not found", "id", id)
-		return nil, repo.ErrNotFound
+		return nil, repoerr.ErrNotFound
 	}
 	logger.FromCtx(ctx).Debug("got task", "id", id)
 	return scanTask(rows)
@@ -162,7 +163,7 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) (*model.Task, *st
 	).Scan(&cur.ProjectID, &curParentID, &curStatus, &cur.Position)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil, repo.ErrNotFound
+			return nil, nil, repoerr.ErrNotFound
 		}
 		return nil, nil, fmt.Errorf("load current task: %w", err)
 	}
@@ -324,7 +325,7 @@ func (s *taskStore) Update(ctx context.Context, t *model.Task) (*model.Task, *st
 			if err := tx.Rollback(); err != nil {
 				return nil, nil, fmt.Errorf("rollback: %w", err)
 			}
-			return nil, nil, repo.ErrConflict
+			return nil, nil, repoerr.ErrConflict
 		}
 
 		nextDue, err := nextOccurrence(*t.DueDate, *t.Recurrence)
@@ -416,7 +417,7 @@ func (s *taskStore) Delete(ctx context.Context, id string) error {
 	).Scan(&projectID, &parentID, &taskStatus)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return repo.ErrNotFound
+			return repoerr.ErrNotFound
 		}
 		return fmt.Errorf("load task for delete: %w", err)
 	}
@@ -441,7 +442,7 @@ func (s *taskStore) Delete(ctx context.Context, id string) error {
 }
 
 // validateStatus checks that status exists in project_statuses for the given project.
-// Returns repo.ErrConflict if it doesn't.
+// Returns repoerr.ErrConflict if it doesn't.
 func validateStatus(ctx context.Context, tx *sql.Tx, projectID, status string) error {
 	var count int
 	err := tx.QueryRowContext(ctx,
@@ -452,7 +453,7 @@ func validateStatus(ctx context.Context, tx *sql.Tx, projectID, status string) e
 		return fmt.Errorf("validate status: %w", err)
 	}
 	if count == 0 {
-		return repo.ErrConflict
+		return repoerr.ErrConflict
 	}
 	return nil
 }
@@ -517,7 +518,7 @@ func loadProjectMoveContext(ctx context.Context, tx *sql.Tx, projectID string) (
 		return nil, fmt.Errorf("iterate target statuses: %w", err)
 	}
 	if ctxData.firstStatus == "" {
-		return nil, repo.ErrConflict
+		return nil, repoerr.ErrConflict
 	}
 
 	if err := tx.QueryRowContext(ctx,
@@ -525,7 +526,7 @@ func loadProjectMoveContext(ctx context.Context, tx *sql.Tx, projectID string) (
 		projectID,
 	).Scan(&ctxData.ownerID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, repo.ErrNotFound
+			return nil, repoerr.ErrNotFound
 		}
 		return nil, fmt.Errorf("load target owner: %w", err)
 	}
@@ -698,12 +699,12 @@ func validateMoveParent(ctx context.Context, tx *sql.Tx, targetProjectID string,
 	).Scan(&parentProject)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return repo.ErrNotFound
+			return repoerr.ErrNotFound
 		}
 		return fmt.Errorf("validate new parent: %w", err)
 	}
 	if parentProject != targetProjectID {
-		return repo.ErrConflict
+		return repoerr.ErrConflict
 	}
 	return nil
 }
@@ -725,14 +726,14 @@ func compactPositions(ctx context.Context, tx *sql.Tx, projectID string, parentI
 	return nil
 }
 
-// checkCycle returns repo.ErrConflict if making taskID a child of newParentID
+// checkCycle returns repoerr.ErrConflict if making taskID a child of newParentID
 // would create a cycle (newParentID is taskID itself or a descendant of taskID).
 func checkCycle(ctx context.Context, tx *sql.Tx, taskID string, newParentID *string) error {
 	if newParentID == nil {
 		return nil
 	}
 	if *newParentID == taskID {
-		return repo.ErrConflict
+		return repoerr.ErrConflict
 	}
 
 	// Walk descendants of taskID — if newParentID appears among them, it's a cycle.
@@ -749,7 +750,7 @@ func checkCycle(ctx context.Context, tx *sql.Tx, taskID string, newParentID *str
 	defer rows.Close()
 
 	if rows.Next() {
-		return repo.ErrConflict
+		return repoerr.ErrConflict
 	}
 	return rows.Err()
 }

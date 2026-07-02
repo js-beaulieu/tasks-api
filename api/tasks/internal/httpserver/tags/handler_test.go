@@ -10,8 +10,8 @@ import (
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/middleware"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/httpserver/tags"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/model"
-	httptestutil "github.com/js-beaulieu/hs-api/api/tasks/internal/testing/http"
 	"github.com/js-beaulieu/hs-api/api/tasks/internal/testing/mock"
+	humatest "github.com/js-beaulieu/hs-api/libs/hs-common/huma"
 )
 
 var testUser = &model.User{ID: "user-1", Name: "Alice", Email: "alice@example.com"}
@@ -32,7 +32,7 @@ func newRequest(method, path string) *http.Request {
 }
 
 func newHandler(tagRepo *mock.TagRepo) http.Handler {
-	mux, api := httptestutil.NewHumaMux("tasks-api-tags-test")
+	mux, api := humatest.NewTestMux("tasks-api-tags-test")
 	tags.RegisterRoutes(api, tagRepo, "")
 	return mux
 }

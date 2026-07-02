@@ -1,4 +1,5 @@
-package httptestutil
+// Package huma provides a small Huma test helper used by Home Stack API services.
+package huma
 
 import (
 	"net/http"
@@ -7,10 +8,10 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 )
 
-// NewHumaMux creates a standalone Huma API for unit tests.
+// NewTestMux creates a standalone Huma API for unit tests.
 // Generated docs/schema routes are disabled to keep leaf-router tests focused
 // on the routes under test and avoid wildcard path conflicts.
-func NewHumaMux(title string) (*http.ServeMux, huma.API) {
+func NewTestMux(title string) (*http.ServeMux, huma.API) {
 	mux := http.NewServeMux()
 	cfg := huma.DefaultConfig(title, "1.0.0")
 	cfg.OpenAPIPath = ""
